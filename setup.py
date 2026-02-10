@@ -1,4 +1,4 @@
-"""Setup datumate CLI application."""
+"""Setup brv-bench CLI application."""
 
 __author__ = ["Danh Doan"]
 __email__ = ["danhdoancv@gmail.com"]
@@ -21,9 +21,9 @@ def parse_requirements(filename: str) -> list[str]:
 
 
 setup(
-    name="libs",
+    name="brv_bench",
     version="0.1.0",
-    description="My Library",
+    description="Benchmark suite for evaluating retrieval quality, latency, and diversity of AI agent context systems",
     author="Danh Doan",
     author_email="danhdoancv@gmail.com",
     packages=find_packages(),
