@@ -2,6 +2,18 @@
 
 Benchmark suite for evaluating retrieval quality, latency, and diversity of AI agent context systems.
 
+## Setup
+
+To source virtual environment, install dependencies, run:
+```bash
+source scripts/source_env.sh
+```
+
+To verify the setup, run:
+```bash
+python src/main.py
+```
+
 ## Usage
 
 brv-bench has two commands: `curate` and `evaluate`. Both run from your project directory where `brv` is initialized.
