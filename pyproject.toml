@@ -1,0 +1,103 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# =============================================================================
+# Project Metadata
+# =============================================================================
+
+[project]
+name = "brv-bench"
+version = "0.1.0"
+description = "Benchmark suite for evaluating retrieval quality, latency, and diversity of AI agent context systems"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+authors = [
+    { name = "Danh Doan", email = "danhdoancv@gmail.com" },
+]
+keywords = [
+    "benchmark",
+    "retrieval",
+    "information-retrieval",
+    "evaluation",
+    "context-tree",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pydantic>=2.12,<3",
+    "pydantic-settings>=2.11,<3",
+    "python-dotenv>=1.1,<2",
+    "pyyaml>=6.0,<7",
+    "tqdm>=4.67,<5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.15",
+    "pre-commit",
+    "pytest>=8.4,<9",
+    "pytest-benchmark>=5.1,<6",
+    "ruff>=0.14",
+]
+
+[project.scripts]
+brv-bench = "brv_bench.__main__:cli"
+
+# =============================================================================
+# Ruff — Linting & Formatting
+# =============================================================================
+
+[tool.ruff]
+target-version = "py312"
+line-length = 79
+
+[tool.ruff.lint]
+select = [
+    "F",      # pyflakes
+    "E", "W", # pycodestyle
+    "I",      # isort
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "SIM",    # flake8-simplify
+    "TCH",    # flake8-type-checking
+    "RUF",    # ruff-specific
+]
+ignore = [
+    "E501",   # line length handled by formatter
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["brv_bench"]
+
+# =============================================================================
+# Pytest
+# =============================================================================
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-v --strict-markers --tb=short"
+
+# =============================================================================
+# Mypy — Type Checking
+# =============================================================================
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
