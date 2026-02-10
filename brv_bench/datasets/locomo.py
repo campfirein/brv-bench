@@ -32,10 +32,10 @@ from brv_bench.types import (
 )
 
 CATEGORY_NAMES = {
-    1: "single-hop",
+    1: "multi-hop",
     2: "temporal",
-    3: "multi-hop",
-    4: "commonsense",
+    3: "commonsense",
+    4: "single-hop",
     5: "adversarial",
 }
 
