@@ -20,6 +20,9 @@ setuptools==80.9.0
 # For YAML file
 PyYAML==6.0.3
 
+# For NLP (Porter stemmer)
+nltk==3.9.2
+
 # For Pydantic
 pydantic==2.12.3
 pydantic-settings==2.11.0

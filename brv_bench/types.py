@@ -4,7 +4,7 @@ All dataclasses are frozen (immutable) to prevent accidental mutation
 during metric computation and reporting.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 # =============================================================================
 # Dataset types
@@ -62,6 +62,7 @@ class QueryExecution:
     results: tuple[SearchResult, ...]
     total_found: int
     duration_ms: float
+    answer: str | None = None
 
 
 # =============================================================================
