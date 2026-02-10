@@ -20,7 +20,7 @@ class MeanReciprocalRank(Metric):
 
         values: list[float] = []
         for execution, truth in pairs:
-            relevant = set(truth.expected_docs)
+            relevant = set(truth.expected_doc_ids)
             rr = 0.0
             for i, result in enumerate(execution.results):
                 if result.path in relevant:

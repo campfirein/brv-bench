@@ -5,8 +5,8 @@ import time
 from brv_bench.adapters.base import RetrievalAdapter
 from brv_bench.metrics.base import Metric
 from brv_bench.types import (
+    BenchmarkDataset,
     BenchmarkReport,
-    GroundTruthDataset,
     GroundTruthEntry,
     QueryExecution,
 )
@@ -41,7 +41,7 @@ def compute_metrics(
 
 async def evaluate(
     adapter: RetrievalAdapter,
-    dataset: GroundTruthDataset,
+    dataset: BenchmarkDataset,
     metrics: list[Metric],
     limit: int = 10,
 ) -> BenchmarkReport:
@@ -55,7 +55,7 @@ async def evaluate(
 
     Args:
         adapter: Retrieval backend to benchmark.
-        dataset: Ground truth queries and expected documents.
+        dataset: Benchmark dataset with corpus and ground truth.
         metrics: Metrics to compute.
         limit: Max results per query.
 
@@ -67,14 +67,16 @@ async def evaluate(
         await adapter.reset()
 
         start = time.perf_counter()
-        pairs = await run_queries(adapter, dataset.entries, limit)
+        pairs = await run_queries(
+            adapter, dataset.entries, limit
+        )
         duration_ms = (time.perf_counter() - start) * 1000
 
         metric_results = compute_metrics(metrics, pairs)
 
         return BenchmarkReport(
             name=dataset.name,
-            context_tree_docs=0,  # filled by adapter or caller
+            context_tree_docs=len(dataset.corpus),
             query_count=len(dataset.entries),
             duration_ms=duration_ms,
             metrics=tuple(metric_results),

@@ -4,28 +4,43 @@ All dataclasses are frozen (immutable) to prevent accidental mutation
 during metric computation and reporting.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+# =============================================================================
+# Dataset types
 # =============================================================================
 
 
 @dataclass(frozen=True)
-class GroundTruthEntry:
-    """A single ground truth entry: a query with expected relevant documents."""
+class CorpusDocument:
+    """A document to curate into the context tree."""
 
-    query: str
-    expected_docs: tuple[str, ...]
-    category: str = "unspecified"
+    doc_id: str
+    content: str
+    source: str = ""
 
 
 @dataclass(frozen=True)
-class GroundTruthDataset:
-    """A complete ground truth dataset."""
+class GroundTruthEntry:
+    """A single benchmark query with expected results."""
+
+    query: str
+    expected_doc_ids: tuple[str, ...]
+    category: str = "unspecified"
+    expected_answer: str | None = None
+
+
+@dataclass(frozen=True)
+class BenchmarkDataset:
+    """Complete benchmark dataset: corpus + queries + ground truth."""
 
     name: str
+    corpus: tuple[CorpusDocument, ...]
     entries: tuple[GroundTruthEntry, ...]
 
 
+# =============================================================================
+# Retrieval types
 # =============================================================================
 
 
@@ -39,9 +54,6 @@ class SearchResult:
     excerpt: str
 
 
-# =============================================================================
-
-
 @dataclass(frozen=True)
 class QueryExecution:
     """Raw output from a single query execution."""
@@ -53,6 +65,8 @@ class QueryExecution:
 
 
 # =============================================================================
+# Reporting types
+# =============================================================================
 
 
 @dataclass(frozen=True)
@@ -62,9 +76,6 @@ class Percentiles:
     p50: float
     p95: float
     p99: float
-
-
-# =============================================================================
 
 
 @dataclass(frozen=True)

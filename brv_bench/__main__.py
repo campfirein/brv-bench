@@ -8,7 +8,7 @@ from pathlib import Path
 
 from brv_bench.commands.curate import curate
 from brv_bench.metrics import default_metrics
-from brv_bench.types import GroundTruthDataset, GroundTruthEntry
+from brv_bench.types import BenchmarkDataset, CorpusDocument, GroundTruthEntry
 
 # =============================================================================
 
@@ -17,9 +17,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse CLI arguments."""
     parser = argparse.ArgumentParser(
         prog="brv-bench",
-        description="Benchmark suite for AI agent context retrieval systems.",
+        description=(
+            "Benchmark suite for AI agent context"
+            " retrieval systems."
+        ),
     )
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(
+        dest="command", required=True
+    )
 
     # --- curate ---
     curate_parser = subparsers.add_parser(
@@ -57,24 +62,39 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 # =============================================================================
 
 
-def load_ground_truth(path: Path) -> GroundTruthDataset:
-    """Load ground truth dataset from JSON file."""
+def load_dataset(path: Path) -> BenchmarkDataset:
+    """Load benchmark dataset from JSON file."""
     if not path.exists():
-        print(f"Error: ground truth file not found: {path}", file=sys.stderr)
+        print(
+            f"Error: dataset file not found: {path}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     with open(path) as f:
         data = json.load(f)
 
+    corpus = tuple(
+        CorpusDocument(
+            doc_id=d["doc_id"],
+            content=d["content"],
+            source=d.get("source", ""),
+        )
+        for d in data.get("corpus", [])
+    )
+
     entries = tuple(
         GroundTruthEntry(
             query=e["query"],
-            expected_docs=tuple(e["expected_docs"]),
+            expected_doc_ids=tuple(e["expected_doc_ids"]),
             category=e.get("category", "unspecified"),
+            expected_answer=e.get("expected_answer"),
         )
         for e in data["entries"]
     )
-    return GroundTruthDataset(name=data["name"], entries=entries)
+    return BenchmarkDataset(
+        name=data["name"], corpus=corpus, entries=entries
+    )
 
 
 async def main(argv: list[str] | None = None) -> int:
@@ -83,22 +103,26 @@ async def main(argv: list[str] | None = None) -> int:
 
     if args.command == "curate":
         summary = await curate(args.source)
-        print(f"Curated {summary.succeeded}/{summary.total} files.")
+        print(
+            f"Curated {summary.succeeded}/{summary.total}"
+            " files."
+        )
         if summary.failed > 0:
             for r in summary.results:
                 if not r.success:
-                    print(f"  FAILED: {r.file} — {r.message}", file=sys.stderr)
+                    print(
+                        f"  FAILED: {r.file} — {r.message}",
+                        file=sys.stderr,
+                    )
             return 1
         return 0
 
     elif args.command == "evaluate":
-        # Import here so adapter is only needed for evaluate
-
-        _dataset = load_ground_truth(args.ground_truth)
+        _dataset = load_dataset(args.ground_truth)
         _metrics = default_metrics()
 
-        # Adapter will be resolved here once BrvCliAdapter is implemented (B3).
-        # For now, fail with a clear message.
+        # Adapter will be resolved here once BrvCliAdapter
+        # is implemented (B3).
         print(
             "Error: No adapter configured. "
             "BrvCliAdapter implementation is pending (B3).",
