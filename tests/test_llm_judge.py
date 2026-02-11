@@ -381,6 +381,17 @@ class TestPromptTemplate:
         assert "Paris" in result
         assert "Paris, France" in result
 
+    def test_none_template_uses_default(self):
+        client = MockJudgeClient(default=True)
+        metric = LLMJudge(client=client, prompt_template=None)
+        pairs = [
+            (_qe("q1", answer="Paris"), _gt("q1", expected_answer="Paris")),
+        ]
+        [result] = metric.compute(pairs)
+        assert result.value == 1.0
+        # Verify the default template was used (client was called)
+        assert len(client.calls) == 1
+
     def test_custom_template(self):
         template = (
             "Q: {question}\nA: {expected_answer}\n"

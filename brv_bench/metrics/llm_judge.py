@@ -107,12 +107,12 @@ class LLMJudge(Metric):
     def __init__(
         self,
         client: JudgeClient,
-        prompt_template: str = DEFAULT_JUDGE_PROMPT,
+        prompt_template: str | None = None,
         concurrency: int = 5,
         cache_path: Path | None = None,
     ) -> None:
         self._client = client
-        self._prompt_template = prompt_template
+        self._prompt_template = prompt_template or DEFAULT_JUDGE_PROMPT
         self._concurrency = concurrency
         self._cache_path = cache_path
 

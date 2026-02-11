@@ -10,6 +10,7 @@ from brv_bench.types import (
     GroundTruthEntry,
     MetricResult,
     Percentiles,
+    PromptConfig,
     QueryExecution,
     SearchResult,
 )
@@ -205,6 +206,30 @@ class TestCategoryResult:
         cr = CategoryResult(category="x", query_count=1, metrics=())
         with pytest.raises(AttributeError):
             cr.category = "y"  # type: ignore[misc]
+
+
+# ----------------------------------------------------------------
+# PromptConfig
+# ----------------------------------------------------------------
+
+
+class TestPromptConfig:
+    def test_judge_template_defaults_to_none(self):
+        pc = PromptConfig(curate_template="c", query_template="q")
+        assert pc.judge_template is None
+
+    def test_explicit_judge_template(self):
+        pc = PromptConfig(
+            curate_template="c",
+            query_template="q",
+            judge_template="custom judge prompt",
+        )
+        assert pc.judge_template == "custom judge prompt"
+
+    def test_frozen(self):
+        pc = PromptConfig(curate_template="c", query_template="q")
+        with pytest.raises(AttributeError):
+            pc.judge_template = "x"  # type: ignore[misc]
 
 
 # ----------------------------------------------------------------
