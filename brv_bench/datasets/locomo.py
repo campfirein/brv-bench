@@ -20,6 +20,7 @@ Evidence mapping:
 import json
 from pathlib import Path
 
+from brv_bench.datasets import register
 from brv_bench.types import (
     BenchmarkDataset,
     CorpusDocument,
@@ -173,7 +174,7 @@ def _build_entries(
 
 CURATE_TEMPLATE = """\
 You are indexing a long-term conversation dataset called LoCoMo into a \
-context tree. Follow these rules EXACTLY. DO NOT READ ANY FILES in this directory. The only files you are allowed to read are from the context tree ./brv/context-tree/ 
+context tree. Follow these rules EXACTLY. DO NOT READ ANY FILES in this directory. The only files you are allowed to read are from the context tree ./brv/context-tree/
 
 ## Context tree structure
 
@@ -278,7 +279,7 @@ QUERY_TEMPLATE = """\
 Answer the following question using ONLY the conversation context stored in \
 the context tree. You MUST respond in EXACTLY this format — no extra text:
 
-Follow these rules EXACTLY. DO NOT READ ANY FILES in this directory. The only files you are allowed to read are from the context tree ./brv/context-tree/ 
+Follow these rules EXACTLY. DO NOT READ ANY FILES in this directory. The only files you are allowed to read are from the context tree ./brv/context-tree/
 
 ANSWER: <concise answer, few words only>
 SOURCES: <comma-separated doc_ids, e.g. conv-26_s1, conv-26_s3>
@@ -315,3 +316,5 @@ PROMPT_CONFIG = PromptConfig(
     curate_template=CURATE_TEMPLATE,
     query_template=QUERY_TEMPLATE,
 )
+
+register("locomo", PROMPT_CONFIG)

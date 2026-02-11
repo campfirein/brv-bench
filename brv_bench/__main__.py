@@ -7,17 +7,18 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# Import dataset modules so they self-register their PromptConfigs.
+import brv_bench.datasets.locomo  # noqa: F401
 from brv_bench.adapters.brv_cli import BrvCliAdapter
 from brv_bench.commands.curate import curate
 from brv_bench.commands.evaluate import evaluate
-from brv_bench.datasets.locomo import PROMPT_CONFIG as LOCOMO_PROMPT_CONFIG
+from brv_bench.datasets import get_prompt_config
 from brv_bench.metrics import default_metrics
 from brv_bench.reporting.terminal import format_report, save_summary
 from brv_bench.types import (
     BenchmarkDataset,
     CorpusDocument,
     GroundTruthEntry,
-    PromptConfig,
 )
 
 # =============================================================================
@@ -69,6 +70,38 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Path to save results JSON (incremental + final).",
     )
 
+    # LLM-as-Judge options
+    eval_parser.add_argument(
+        "--judge",
+        action="store_true",
+        default=False,
+        help="Enable LLM-as-Judge answer correctness metric.",
+    )
+    eval_parser.add_argument(
+        "--judge-backend",
+        choices=["anthropic", "gemini", "openai"],
+        default="gemini",
+        help="LLM backend for the judge (default: gemini).",
+    )
+    eval_parser.add_argument(
+        "--judge-model",
+        type=str,
+        default=None,
+        help="Model name for the judge (default: backend-specific).",
+    )
+    eval_parser.add_argument(
+        "--judge-concurrency",
+        type=int,
+        default=5,
+        help="Max parallel judge API calls (default: 5).",
+    )
+    eval_parser.add_argument(
+        "--judge-cache",
+        type=Path,
+        default=None,
+        help="Path to JSON file for caching judge verdicts.",
+    )
+
     return parser.parse_args(argv)
 
 
@@ -108,29 +141,13 @@ def load_dataset(path: Path) -> BenchmarkDataset:
     return BenchmarkDataset(name=data["name"], corpus=corpus, entries=entries)
 
 
-DATASET_PROMPT_CONFIGS: dict[str, PromptConfig] = {
-    "locomo": LOCOMO_PROMPT_CONFIG,
-}
-
-
-def _resolve_prompt_config(dataset_name: str) -> PromptConfig:
-    """Look up the prompt config for a dataset by name."""
-    config = DATASET_PROMPT_CONFIGS.get(dataset_name)
-    if config is None:
-        raise ValueError(
-            f"No prompt config for dataset '{dataset_name}'. "
-            f"Known datasets: {', '.join(DATASET_PROMPT_CONFIGS)}"
-        )
-    return config
-
-
 async def main(argv: list[str] | None = None) -> int:
     """Main entry point."""
     args = parse_args(argv)
 
     if args.command == "curate":
         dataset = load_dataset(args.ground_truth)
-        prompt_config = _resolve_prompt_config(dataset.name)
+        prompt_config = get_prompt_config(dataset.name)
         summary = await curate(dataset.corpus, prompt_config)
         print(f"Curated {summary.succeeded}/{summary.total} documents.")
         if summary.failed > 0:
@@ -146,7 +163,25 @@ async def main(argv: list[str] | None = None) -> int:
     elif args.command == "evaluate":
         dataset = load_dataset(args.ground_truth)
         metrics = default_metrics()
-        prompt_config = _resolve_prompt_config(dataset.name)
+
+        if args.judge:
+            from brv_bench.metrics._judge.client import (
+                create_judge_client,
+            )
+            from brv_bench.metrics.llm_judge import LLMJudge
+
+            client = create_judge_client(
+                backend=args.judge_backend,
+                model=args.judge_model,
+            )
+            judge_metric = LLMJudge(
+                client=client,
+                concurrency=args.judge_concurrency,
+                cache_path=args.judge_cache,
+            )
+            metrics.append(judge_metric)
+
+        prompt_config = get_prompt_config(dataset.name)
 
         adapter = BrvCliAdapter(prompt_config=prompt_config)
 

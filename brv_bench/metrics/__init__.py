@@ -7,6 +7,7 @@ from brv_bench.metrics.diversity import ResultDiversity
 from brv_bench.metrics.exact_match import ExactMatch
 from brv_bench.metrics.f1 import F1Score
 from brv_bench.metrics.latency import LatencyMetric
+from brv_bench.metrics.llm_judge import LLMJudge
 from brv_bench.metrics.mrr import MeanReciprocalRank
 from brv_bench.metrics.ndcg import NDCGAtK
 from brv_bench.metrics.precision import PrecisionAtK
@@ -17,6 +18,7 @@ from brv_bench.metrics.recall import RecallAtK
 __all__ = [
     "ExactMatch",
     "F1Score",
+    "LLMJudge",
     "LatencyMetric",
     "MeanReciprocalRank",
     "Metric",

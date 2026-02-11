@@ -6,7 +6,7 @@ from pathlib import Path
 from brv_bench.types import BenchmarkReport, MetricResult
 
 # Metrics displayed as decimal (0.xx) rather than percentage
-_DECIMAL_METRICS = {"mrr", "diversity"}
+_DECIMAL_METRICS = {"mrr", "ndcg", "diversity"}
 
 
 def _format_value(m: MetricResult) -> str:

@@ -41,6 +41,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+judge = [
+    "anthropic>=0.52,<1",
+    "google-genai>=1.0,<2",
+    "openai>=1.82,<2",
+]
 dev = [
     "mypy>=1.15",
     "pre-commit",
