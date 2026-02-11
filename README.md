@@ -48,34 +48,46 @@ Loads the benchmark dataset, formats each corpus document with the dataset-speci
 ### 2. Evaluate (measure retrieval quality)
 
 ```bash
-python -m brv_bench evaluate --ground-truth output/locomo_benchmark.json --output output/results.json
+python -m brv_bench evaluate --ground-truth output/locomo_benchmark.json
 ```
 
 Queries the context tree for each ground-truth entry (1982 for LoCoMo), computes metrics (Precision, Recall, MRR, Diversity, F1, Exact Match), and saves results.
 
-- `--output` saves per-query results **incrementally** (crash-safe) and the final report with metrics.
-- Without `--output`, results are printed to stdout only.
+- Results are always saved to `report/{yyyymmdd}_{dataset}_{memory_system}.json` (detailed per-query data) and `.txt` (summary).
+- Use `--output path/to/results.json` to override the output location.
+- Per-query results are saved **incrementally** (crash-safe).
 - Run as many times as you want -- after tuning search, changing curate strategy, etc.
 
 ### Example output
 
 ```
-Benchmark: locomo
-Corpus docs: 272
-Queries: 1982
-Duration: 125000.0ms
+================================================================
+  Dataset:       locomo
+  Memory System: brv-cli
+  Context tree:  272 documents
+  Queries:       1982
+----------------------------------------------------------------
 
-  Precision@5       68.00%
-  Precision@10      71.50%
-  Recall@5          68.00%
-  Recall@10         85.20%
-  MRR               76.00%
-  Diversity@5       89.00%
-  Cold Latency        1.20 s
-  F1 Score          45.00%
-  Exact Match       21.00%
+  Quality Metrics:
+  ----------------------------------------
+  Precision@5        68.0%
+  Precision@10       71.5%
+  Recall@5           68.0%
+  Recall@10          85.2%
+  MRR                 0.76
+  Diversity@5         0.89
+  F1 Score           45.0%
+  Exact Match        21.0%
 
-Results saved to output/results.json
+  Latency Metrics:
+  --------------------------------------------------------
+  Metric                   Mean      p50      p95      p99
+  --------------------------------------------------------
+  Cold Latency             1.2s     1.1s     2.3s     3.1s
+================================================================
+
+Results saved to report/20260211_locomo_brv-cli.json
+Summary saved to report/20260211_locomo_brv-cli.txt
 ```
 
 ## Ground Truth Format
