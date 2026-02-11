@@ -14,6 +14,12 @@ To verify the setup, run:
 python -m brv_bench --help
 ```
 
+## Supported Datasets
+
+| Dataset | Description | Corpus | Queries | Download |
+|---------|-------------|--------|---------|----------|
+| LoCoMo | Long-term conversation memory QA (10 conversations, 272 sessions) | 272 docs | 1982 | [locomo10.json](https://github.com/snap-research/locomo/blob/main/data/locomo10.json) |
+
 ## Preparing the Dataset
 
 Transform the raw LoCoMo JSON into brv-bench's canonical format:
@@ -59,15 +65,15 @@ Corpus docs: 272
 Queries: 1982
 Duration: 125000.0ms
 
-  Precision@5: 68.00%
-  Precision@10: 71.50%
-  Recall@5: 68.00%
-  Recall@10: 85.20%
-  MRR: 76.00%
-  Diversity@5: 89.00%
-  Cold Latency: 1200.00 ms
-  F1 Score: 45.00%
-  Exact Match: 21.00%
+  Precision@5       68.00%
+  Precision@10      71.50%
+  Recall@5          68.00%
+  Recall@10         85.20%
+  MRR               76.00%
+  Diversity@5       89.00%
+  Cold Latency        1.20 s
+  F1 Score          45.00%
+  Exact Match       21.00%
 
 Results saved to output/results.json
 ```

@@ -36,24 +36,24 @@ class LatencyMetric(Metric):
                     name=self._id,
                     label=self._label,
                     value=0.0,
-                    unit="ms",
+                    unit="s",
                     percentiles=Percentiles(p50=0.0, p95=0.0, p99=0.0),
                 )
             ]
 
-        durations = sorted(e.duration_ms for e, _ in pairs)
-        mean = sum(durations) / len(durations)
+        durations_s = sorted(e.duration_ms / 1000 for e, _ in pairs)
+        mean = sum(durations_s) / len(durations_s)
 
         return [
             MetricResult(
                 name=self._id,
                 label=self._label,
                 value=mean,
-                unit="ms",
+                unit="s",
                 percentiles=Percentiles(
-                    p50=_percentile(durations, 0.50),
-                    p95=_percentile(durations, 0.95),
-                    p99=_percentile(durations, 0.99),
+                    p50=_percentile(durations_s, 0.50),
+                    p95=_percentile(durations_s, 0.95),
+                    p99=_percentile(durations_s, 0.99),
                 ),
             )
         ]

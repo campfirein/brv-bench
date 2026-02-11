@@ -161,11 +161,13 @@ async def main(argv: list[str] | None = None) -> int:
         print(f"Queries: {report.query_count}")
         print(f"Duration: {report.duration_ms:.1f}ms")
         print()
+        max_label = max(len(m.label) for m in report.metrics)
         for m in report.metrics:
             if m.unit == "ratio":
-                print(f"  {m.label}: {m.value:.2%}")
+                val = f"{m.value:.2%}"
             else:
-                print(f"  {m.label}: {m.value:.2f} {m.unit}")
+                val = f"{m.value:.2f} {m.unit}"
+            print(f"  {m.label:<{max_label}}  {val:>12}")
 
         if args.output:
             print(f"\nResults saved to {args.output}")

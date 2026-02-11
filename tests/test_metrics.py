@@ -253,9 +253,10 @@ class TestLatencyMetric:
     def test_single_query(self):
         pairs = [(_qe("q", ["a.md"], duration_ms=100.0), _gt("q", ["a.md"]))]
         [result] = LatencyMetric("Cold Latency", "cold-latency").compute(pairs)
-        assert result.value == 100.0
+        assert result.value == 0.1
+        assert result.unit == "s"
         assert result.percentiles is not None
-        assert result.percentiles.p50 == 100.0
+        assert result.percentiles.p50 == 0.1
 
     def test_multiple_queries_percentiles(self):
         pairs = [
@@ -264,8 +265,8 @@ class TestLatencyMetric:
         ]
         [result] = LatencyMetric("Cold", "cold").compute(pairs)
         assert result.percentiles is not None
-        assert result.percentiles.p50 == pytest.approx(50.0, abs=1.0)
-        assert result.percentiles.p95 == pytest.approx(95.0, abs=1.0)
+        assert result.percentiles.p50 == pytest.approx(0.050, abs=0.001)
+        assert result.percentiles.p95 == pytest.approx(0.095, abs=0.001)
 
     def test_empty_pairs(self):
         [result] = LatencyMetric("Cold", "cold").compute([])
