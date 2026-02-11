@@ -19,16 +19,30 @@ python -m brv_bench --help
 | Dataset | Description | Corpus | Queries | Download |
 |---------|-------------|--------|---------|----------|
 | LoCoMo | Long-term conversation memory QA (10 conversations, 272 sessions) | 272 docs | 1982 | [locomo10.json](https://github.com/snap-research/locomo/blob/main/data/locomo10.json) |
+| LongMemEval | Long-term interactive memory benchmark (ICLR 2025, 6 memory abilities) | 940 docs | 500 | [HuggingFace](https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned) |
 
 ## Preparing the Dataset
 
-Transform the raw LoCoMo JSON into brv-bench's canonical format:
+Transform a raw dataset JSON into brv-bench's canonical format.
+
+**LoCoMo:**
 
 ```bash
 python scripts/transform_locomo.py locomo10.json output/locomo_benchmark.json
 ```
 
-This produces a single JSON file with corpus documents (one per session) and ground-truth QA entries.
+**LongMemEval:**
+
+```bash
+python scripts/transform_longmemeval.py longmemeval_oracle.json output/longmemeval_benchmark.json
+```
+
+LongMemEval has three variants — use whichever fits your evaluation:
+- `longmemeval_oracle.json` — evidence sessions only (recommended for initial testing)
+- `longmemeval_s_cleaned.json` — ~40 sessions per question (~115k tokens)
+- `longmemeval_m_cleaned.json` — ~500 sessions per question (~1.5M tokens)
+
+Each transform produces a single JSON file with corpus documents (one per session) and ground-truth QA entries.
 
 ## Usage
 

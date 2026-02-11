@@ -9,6 +9,7 @@ from pathlib import Path
 
 # Import dataset modules so they self-register their PromptConfigs.
 import brv_bench.datasets.locomo  # noqa: F401
+import brv_bench.datasets.longmemeval  # noqa: F401
 from brv_bench.adapters.brv_cli import BrvCliAdapter
 from brv_bench.commands.curate import curate
 from brv_bench.commands.evaluate import evaluate
