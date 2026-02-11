@@ -14,6 +14,16 @@ To verify the setup, run:
 python -m brv_bench --help
 ```
 
+## Preparing the Dataset
+
+Transform the raw LoCoMo JSON into brv-bench's canonical format:
+
+```bash
+python scripts/transform_locomo.py locomo10.json output/locomo_benchmark.json
+```
+
+This produces a single JSON file with corpus documents (one per session) and ground-truth QA entries.
+
 ## Usage
 
 brv-bench has two commands: `curate` and `evaluate`. Both run from your project directory where `brv` is initialized.
