@@ -90,7 +90,8 @@ class TestPrecisionAtK:
             )
         ]
         [result] = PrecisionAtK(2).compute(pairs)
-        assert result.value == 1.0
+        # top-2 = [a.md, b.md], 1 hit / 2 = 0.5
+        assert result.value == 0.5
 
     def test_empty_pairs(self):
         [result] = PrecisionAtK(5).compute([])
