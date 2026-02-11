@@ -7,25 +7,53 @@ during metric computation and reporting.
 from dataclasses import dataclass
 
 # =============================================================================
+# Dataset types
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class CorpusDocument:
+    """A document to curate into the context tree."""
+
+    doc_id: str
+    content: str
+    source: str = ""
 
 
 @dataclass(frozen=True)
 class GroundTruthEntry:
-    """A single ground truth entry: a query with expected relevant documents."""
+    """A single benchmark query with expected results."""
 
     query: str
-    expected_docs: tuple[str, ...]
+    expected_doc_ids: tuple[str, ...]
     category: str = "unspecified"
+    expected_answer: str | None = None
 
 
 @dataclass(frozen=True)
-class GroundTruthDataset:
-    """A complete ground truth dataset."""
+class BenchmarkDataset:
+    """Complete benchmark dataset: corpus + queries + ground truth."""
 
     name: str
+    corpus: tuple[CorpusDocument, ...]
     entries: tuple[GroundTruthEntry, ...]
 
 
+# =============================================================================
+# Adapter types
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class PromptConfig:
+    """Dataset-specific prompt templates for the BRV adapter."""
+
+    curate_template: str
+    query_template: str
+
+
+# =============================================================================
+# Retrieval types
 # =============================================================================
 
 
@@ -39,9 +67,6 @@ class SearchResult:
     excerpt: str
 
 
-# =============================================================================
-
-
 @dataclass(frozen=True)
 class QueryExecution:
     """Raw output from a single query execution."""
@@ -50,8 +75,11 @@ class QueryExecution:
     results: tuple[SearchResult, ...]
     total_found: int
     duration_ms: float
+    answer: str | None = None
 
 
+# =============================================================================
+# Reporting types
 # =============================================================================
 
 
@@ -62,9 +90,6 @@ class Percentiles:
     p50: float
     p95: float
     p99: float
-
-
-# =============================================================================
 
 
 @dataclass(frozen=True)

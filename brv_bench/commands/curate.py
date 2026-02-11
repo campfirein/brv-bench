@@ -1,15 +1,21 @@
-"""Curate command — populate context tree from source files."""
+"""Curate command — populate context tree from a benchmark dataset."""
 
 import asyncio
+import logging
 from dataclasses import dataclass
-from pathlib import Path
+
+from tqdm import tqdm
+
+from brv_bench.types import CorpusDocument, PromptConfig
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class CurateResult:
     """Result of a single curate operation."""
 
-    file: Path
+    doc_id: str
     success: bool
     message: str
 
@@ -24,57 +30,70 @@ class CurateSummary:
     results: tuple[CurateResult, ...]
 
 
-async def curate_file(file: Path) -> CurateResult:
-    """Curate a single file via brv CLI.
+async def curate_doc(
+    doc: CorpusDocument,
+    prompt_config: PromptConfig,
+) -> CurateResult:
+    """Curate a single corpus document via brv CLI.
 
-    Runs: brv curate --headless -f <file>
+    Formats the document using the prompt template, then runs:
+        brv curate <formatted_content> --headless --format json
     """
+    formatted = prompt_config.curate_template.format(
+        doc_id=doc.doc_id,
+        source=doc.source,
+        content=doc.content,
+    )
+
     proc = await asyncio.create_subprocess_exec(
         "brv",
         "curate",
+        formatted,
         "--headless",
-        "-f",
-        str(file),
+        "--format",
+        "json",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
     stdout, stderr = await proc.communicate()
 
     if proc.returncode == 0:
-        return CurateResult(file=file, success=True, message=stdout.decode().strip())
+        return CurateResult(
+            doc_id=doc.doc_id,
+            success=True,
+            message=stdout.decode().strip(),
+        )
     else:
         msg = stderr.decode().strip() or stdout.decode().strip()
-        return CurateResult(file=file, success=False, message=msg)
+        return CurateResult(
+            doc_id=doc.doc_id,
+            success=False,
+            message=msg,
+        )
 
 
-def collect_source_files(source_dir: Path) -> list[Path]:
-    """Collect all files from the source directory, sorted for determinism."""
-    if not source_dir.is_dir():
-        raise FileNotFoundError(f"Source directory not found: {source_dir}")
-    files = [f for f in source_dir.rglob("*") if f.is_file()]
-    return sorted(files)
-
-
-async def curate(source_dir: Path) -> CurateSummary:
+async def curate(
+    corpus: tuple[CorpusDocument, ...],
+    prompt_config: PromptConfig,
+) -> CurateSummary:
     """Run the full curation pipeline.
 
-    Walks source_dir, calls `brv curate --headless -f <file>` for each file,
-    and returns a summary of results.
+    Iterates over corpus documents sequentially, formatting each
+    with the prompt template and passing to `brv curate`.
 
     Args:
-        source_dir: Directory containing source files to curate.
+        corpus: Corpus documents from the benchmark dataset.
+        prompt_config: Dataset-specific prompt templates.
 
     Returns:
-        CurateSummary with per-file results.
+        CurateSummary with per-document results.
     """
-    files = collect_source_files(source_dir)
-
-    if not files:
+    if not corpus:
         return CurateSummary(total=0, succeeded=0, failed=0, results=())
 
     results: list[CurateResult] = []
-    for file in files:
-        result = await curate_file(file)
+    for doc in tqdm(corpus, desc="Curating", unit="doc"):
+        result = await curate_doc(doc, prompt_config)
         results.append(result)
 
     succeeded = sum(1 for r in results if r.success)

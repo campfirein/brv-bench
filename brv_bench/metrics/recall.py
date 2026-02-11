@@ -27,7 +27,7 @@ class RecallAtK(Metric):
 
         values: list[float] = []
         for execution, truth in pairs:
-            relevant = set(truth.expected_docs)
+            relevant = set(truth.expected_doc_ids)
             if not relevant:
                 values.append(1.0)
                 continue

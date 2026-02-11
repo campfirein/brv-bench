@@ -6,9 +6,12 @@ import json
 import sys
 from pathlib import Path
 
+from brv_bench.adapters.brv_cli import BrvCliAdapter
 from brv_bench.commands.curate import curate
+from brv_bench.commands.evaluate import evaluate
+from brv_bench.datasets.locomo import PROMPT_CONFIG as LOCOMO_PROMPT_CONFIG
 from brv_bench.metrics import default_metrics
-from brv_bench.types import GroundTruthDataset, GroundTruthEntry
+from brv_bench.types import BenchmarkDataset, CorpusDocument, GroundTruthEntry, PromptConfig
 
 # =============================================================================
 
@@ -17,20 +20,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse CLI arguments."""
     parser = argparse.ArgumentParser(
         prog="brv-bench",
-        description="Benchmark suite for AI agent context retrieval systems.",
+        description=(
+            "Benchmark suite for AI agent context"
+            " retrieval systems."
+        ),
     )
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(
+        dest="command", required=True
+    )
 
     # --- curate ---
     curate_parser = subparsers.add_parser(
         "curate",
-        help="Populate context tree from source files.",
+        help="Populate context tree from a benchmark dataset.",
     )
     curate_parser.add_argument(
-        "--source",
+        "--ground-truth",
         type=Path,
         required=True,
-        help="Directory containing source files to curate.",
+        help="Path to benchmark dataset JSON file.",
     )
 
     # --- evaluate ---
@@ -50,6 +58,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=10,
         help="Max results per query (default: 10).",
     )
+    eval_parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Path to save results JSON (incremental + final).",
+    )
 
     return parser.parse_args(argv)
 
@@ -57,24 +71,55 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 # =============================================================================
 
 
-def load_ground_truth(path: Path) -> GroundTruthDataset:
-    """Load ground truth dataset from JSON file."""
+def load_dataset(path: Path) -> BenchmarkDataset:
+    """Load benchmark dataset from JSON file."""
     if not path.exists():
-        print(f"Error: ground truth file not found: {path}", file=sys.stderr)
+        print(
+            f"Error: dataset file not found: {path}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     with open(path) as f:
         data = json.load(f)
 
+    corpus = tuple(
+        CorpusDocument(
+            doc_id=d["doc_id"],
+            content=d["content"],
+            source=d.get("source", ""),
+        )
+        for d in data.get("corpus", [])
+    )
+
     entries = tuple(
         GroundTruthEntry(
             query=e["query"],
-            expected_docs=tuple(e["expected_docs"]),
+            expected_doc_ids=tuple(e["expected_doc_ids"]),
             category=e.get("category", "unspecified"),
+            expected_answer=e.get("expected_answer"),
         )
         for e in data["entries"]
     )
-    return GroundTruthDataset(name=data["name"], entries=entries)
+    return BenchmarkDataset(
+        name=data["name"], corpus=corpus, entries=entries
+    )
+
+
+DATASET_PROMPT_CONFIGS: dict[str, PromptConfig] = {
+    "locomo": LOCOMO_PROMPT_CONFIG,
+}
+
+
+def _resolve_prompt_config(dataset_name: str) -> PromptConfig:
+    """Look up the prompt config for a dataset by name."""
+    config = DATASET_PROMPT_CONFIGS.get(dataset_name)
+    if config is None:
+        raise ValueError(
+            f"No prompt config for dataset '{dataset_name}'. "
+            f"Known datasets: {', '.join(DATASET_PROMPT_CONFIGS)}"
+        )
+    return config
 
 
 async def main(argv: list[str] | None = None) -> int:
@@ -82,29 +127,52 @@ async def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
     if args.command == "curate":
-        summary = await curate(args.source)
-        print(f"Curated {summary.succeeded}/{summary.total} files.")
+        dataset = load_dataset(args.ground_truth)
+        prompt_config = _resolve_prompt_config(dataset.name)
+        summary = await curate(dataset.corpus, prompt_config)
+        print(
+            f"Curated {summary.succeeded}/{summary.total}"
+            " documents."
+        )
         if summary.failed > 0:
             for r in summary.results:
                 if not r.success:
-                    print(f"  FAILED: {r.file} — {r.message}", file=sys.stderr)
+                    print(
+                        f"  FAILED: {r.doc_id} — {r.message}",
+                        file=sys.stderr,
+                    )
             return 1
         return 0
 
     elif args.command == "evaluate":
-        # Import here so adapter is only needed for evaluate
+        dataset = load_dataset(args.ground_truth)
+        metrics = default_metrics()
+        prompt_config = _resolve_prompt_config(dataset.name)
 
-        _dataset = load_ground_truth(args.ground_truth)
-        _metrics = default_metrics()
+        adapter = BrvCliAdapter(prompt_config=prompt_config)
 
-        # Adapter will be resolved here once BrvCliAdapter is implemented (B3).
-        # For now, fail with a clear message.
-        print(
-            "Error: No adapter configured. "
-            "BrvCliAdapter implementation is pending (B3).",
-            file=sys.stderr,
+        report = await evaluate(
+            adapter, dataset, metrics,
+            limit=args.limit, output_path=args.output,
         )
-        return 1
+
+        print(f"Benchmark: {report.name}")
+        print(f"Corpus docs: {report.context_tree_docs}")
+        print(f"Queries: {report.query_count}")
+        print(f"Duration: {report.duration_ms:.1f}ms")
+        print()
+        max_label = max(len(m.label) for m in report.metrics)
+        for m in report.metrics:
+            if m.unit == "ratio":
+                val = f"{m.value:.2%}"
+            else:
+                val = f"{m.value:.2f} {m.unit}"
+            print(f"  {m.label:<{max_label}}  {val:>12}")
+
+        if args.output:
+            print(f"\nResults saved to {args.output}")
+
+        return 0
 
     return 0
 

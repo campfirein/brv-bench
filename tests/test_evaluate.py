@@ -6,29 +6,39 @@ from unittest.mock import AsyncMock
 import pytest
 
 from brv_bench.adapters.base import RetrievalAdapter
-from brv_bench.commands.evaluate import compute_metrics, evaluate, run_queries
+from brv_bench.commands.evaluate import (
+    compute_metrics,
+    evaluate,
+    run_queries,
+)
 from brv_bench.metrics import default_metrics
 from brv_bench.metrics.precision import PrecisionAtK
 from brv_bench.types import (
+    BenchmarkDataset,
     BenchmarkReport,
-    GroundTruthDataset,
+    CorpusDocument,
     GroundTruthEntry,
     QueryExecution,
     SearchResult,
 )
 
-# ---------------------------------------------------------------------------
+
+# ----------------------------------------------------------------
 # Fixtures
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------
 
 
-def _make_adapter(results_map: dict[str, QueryExecution]) -> RetrievalAdapter:
-    """Create a mock adapter that returns pre-defined results."""
+def _make_adapter(
+    results_map: dict[str, QueryExecution],
+) -> RetrievalAdapter:
+    """Create a mock adapter with pre-defined results."""
     adapter = AsyncMock(spec=RetrievalAdapter)
     adapter.name = "mock"
     adapter.supports_warm_latency = False
 
-    async def mock_query(query: str, limit: int) -> QueryExecution:
+    async def mock_query(
+        query: str, limit: int
+    ) -> QueryExecution:
         return results_map.get(
             query,
             QueryExecution(
@@ -43,12 +53,18 @@ def _make_adapter(results_map: dict[str, QueryExecution]) -> RetrievalAdapter:
     return adapter
 
 
-def _perfect_result(query: str, docs: tuple[str, ...]) -> QueryExecution:
-    """Create a QueryExecution where results perfectly match expected docs."""
+def _perfect_result(
+    query: str, docs: tuple[str, ...]
+) -> QueryExecution:
     return QueryExecution(
         query=query,
         results=tuple(
-            SearchResult(path=d, title=d, score=1.0, excerpt=f"excerpt for {d}")
+            SearchResult(
+                path=d,
+                title=d,
+                score=1.0,
+                excerpt=f"excerpt for {d}",
+            )
             for d in docs
         ),
         total_found=len(docs),
@@ -56,26 +72,43 @@ def _perfect_result(query: str, docs: tuple[str, ...]) -> QueryExecution:
     )
 
 
-DATASET = GroundTruthDataset(
+CORPUS = (
+    CorpusDocument(
+        doc_id="auth/oauth.md", content="OAuth details"
+    ),
+    CorpusDocument(
+        doc_id="db/schema.md", content="DB schema"
+    ),
+    CorpusDocument(
+        doc_id="db/migrations.md",
+        content="DB migrations",
+    ),
+)
+
+DATASET = BenchmarkDataset(
     name="test-dataset",
+    corpus=CORPUS,
     entries=(
         GroundTruthEntry(
             query="How does auth work?",
-            expected_docs=("auth/oauth.md",),
+            expected_doc_ids=("auth/oauth.md",),
             category="natural-language",
         ),
         GroundTruthEntry(
             query="Database schema",
-            expected_docs=("db/schema.md", "db/migrations.md"),
+            expected_doc_ids=(
+                "db/schema.md",
+                "db/migrations.md",
+            ),
             category="exact",
         ),
     ),
 )
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------
 # run_queries
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------
 
 
 class TestRunQueries:
@@ -85,11 +118,14 @@ class TestRunQueries:
                 "How does auth work?", ("auth/oauth.md",)
             ),
             "Database schema": _perfect_result(
-                "Database schema", ("db/schema.md", "db/migrations.md")
+                "Database schema",
+                ("db/schema.md", "db/migrations.md"),
             ),
         }
         adapter = _make_adapter(results_map)
-        pairs = asyncio.run(run_queries(adapter, DATASET.entries, limit=10))
+        pairs = asyncio.run(
+            run_queries(adapter, DATASET.entries, limit=10)
+        )
 
         assert len(pairs) == 2
         assert pairs[0][1].query == "How does auth work?"
@@ -97,20 +133,25 @@ class TestRunQueries:
 
     def test_query_called_with_correct_limit(self):
         adapter = _make_adapter({})
-        entries = (GroundTruthEntry(query="test", expected_docs=("a.md",)),)
+        entries = (
+            GroundTruthEntry(
+                query="test", expected_doc_ids=("a.md",)
+            ),
+        )
         asyncio.run(run_queries(adapter, entries, limit=5))
-
         adapter.query.assert_called_once_with("test", 5)
 
     def test_empty_entries(self):
         adapter = _make_adapter({})
-        pairs = asyncio.run(run_queries(adapter, (), limit=10))
+        pairs = asyncio.run(
+            run_queries(adapter, (), limit=10)
+        )
         assert pairs == []
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------
 # compute_metrics
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------
 
 
 class TestComputeMetrics:
@@ -118,7 +159,9 @@ class TestComputeMetrics:
         pairs = [
             (
                 _perfect_result("q1", ("a.md",)),
-                GroundTruthEntry(query="q1", expected_docs=("a.md",)),
+                GroundTruthEntry(
+                    query="q1", expected_doc_ids=("a.md",)
+                ),
             ),
         ]
         metrics = [PrecisionAtK(5), PrecisionAtK(10)]
@@ -132,7 +175,9 @@ class TestComputeMetrics:
         pairs = [
             (
                 _perfect_result("q1", ("a.md",)),
-                GroundTruthEntry(query="q1", expected_docs=("a.md",)),
+                GroundTruthEntry(
+                    query="q1", expected_doc_ids=("a.md",)
+                ),
             ),
         ]
         results = compute_metrics([], pairs)
@@ -144,9 +189,9 @@ class TestComputeMetrics:
         assert results[0].value == 0.0
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------
 # evaluate (full pipeline)
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------
 
 
 class TestEvaluate:
@@ -156,17 +201,21 @@ class TestEvaluate:
                 "How does auth work?", ("auth/oauth.md",)
             ),
             "Database schema": _perfect_result(
-                "Database schema", ("db/schema.md", "db/migrations.md")
+                "Database schema",
+                ("db/schema.md", "db/migrations.md"),
             ),
         }
         adapter = _make_adapter(results_map)
         metrics = [PrecisionAtK(5)]
 
-        report = asyncio.run(evaluate(adapter, DATASET, metrics, limit=10))
+        report = asyncio.run(
+            evaluate(adapter, DATASET, metrics, limit=10)
+        )
 
         assert isinstance(report, BenchmarkReport)
         assert report.name == "test-dataset"
         assert report.query_count == 2
+        assert report.context_tree_docs == 3
         assert report.duration_ms > 0
         assert len(report.metrics) == 1
         assert report.metrics[0].name == "precision@5"
@@ -174,7 +223,9 @@ class TestEvaluate:
 
     def test_calls_setup_reset_teardown(self):
         adapter = _make_adapter({})
-        dataset = GroundTruthDataset(name="empty", entries=())
+        dataset = BenchmarkDataset(
+            name="empty", corpus=(), entries=()
+        )
         metrics = [PrecisionAtK(5)]
 
         asyncio.run(evaluate(adapter, dataset, metrics))
@@ -185,11 +236,21 @@ class TestEvaluate:
 
     def test_teardown_called_on_error(self):
         adapter = _make_adapter({})
-        adapter.reset.side_effect = RuntimeError("reset failed")
-        dataset = GroundTruthDataset(name="err", entries=())
+        adapter.reset.side_effect = RuntimeError(
+            "reset failed"
+        )
+        dataset = BenchmarkDataset(
+            name="err", corpus=(), entries=()
+        )
 
-        with pytest.raises(RuntimeError, match="reset failed"):
-            asyncio.run(evaluate(adapter, dataset, [PrecisionAtK(5)]))
+        with pytest.raises(
+            RuntimeError, match="reset failed"
+        ):
+            asyncio.run(
+                evaluate(
+                    adapter, dataset, [PrecisionAtK(5)]
+                )
+            )
 
         adapter.teardown.assert_awaited_once()
 
@@ -199,19 +260,25 @@ class TestEvaluate:
                 "How does auth work?", ("auth/oauth.md",)
             ),
             "Database schema": _perfect_result(
-                "Database schema", ("db/schema.md", "db/migrations.md")
+                "Database schema",
+                ("db/schema.md", "db/migrations.md"),
             ),
         }
         adapter = _make_adapter(results_map)
 
-        report = asyncio.run(evaluate(adapter, DATASET, default_metrics(), limit=10))
+        report = asyncio.run(
+            evaluate(
+                adapter, DATASET, default_metrics(), limit=10
+            )
+        )
 
         assert report.query_count == 2
-        # 7 default metrics
-        assert len(report.metrics) == 7
+        assert len(report.metrics) == 9
         metric_names = {m.name for m in report.metrics}
         assert "precision@5" in metric_names
         assert "recall@10" in metric_names
         assert "mrr" in metric_names
         assert "diversity@5" in metric_names
         assert "cold-latency" in metric_names
+        assert "F1" in metric_names
+        assert "Exact Match" in metric_names

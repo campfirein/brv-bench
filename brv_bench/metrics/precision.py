@@ -28,7 +28,7 @@ class PrecisionAtK(Metric):
         values: list[float] = []
         for execution, truth in pairs:
             top_k = execution.results[: self._k]
-            relevant = set(truth.expected_docs)
+            relevant = set(truth.expected_doc_ids)
             hits = sum(1 for r in top_k if r.path in relevant)
             denominator = min(self._k, max(len(relevant), 1))
             values.append(hits / denominator)

@@ -1,67 +1,34 @@
 """Tests for the curate command."""
 
 import asyncio
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from brv_bench.commands.curate import (
     CurateSummary,
-    collect_source_files,
     curate,
-    curate_file,
+    curate_doc,
+)
+from brv_bench.types import CorpusDocument, PromptConfig
+
+PROMPT_CONFIG = PromptConfig(
+    curate_template="CURATE {doc_id} {source}\n{content}",
+    query_template="QUERY {question}",
 )
 
-# ---------------------------------------------------------------------------
-# collect_source_files
-# ---------------------------------------------------------------------------
 
-
-class TestCollectSourceFiles:
-    def test_collects_files(self, tmp_path: Path):
-        (tmp_path / "a.md").write_text("content a")
-        (tmp_path / "b.txt").write_text("content b")
-        sub = tmp_path / "sub"
-        sub.mkdir()
-        (sub / "c.md").write_text("content c")
-
-        files = collect_source_files(tmp_path)
-
-        assert len(files) == 3
-        names = [f.name for f in files]
-        assert "a.md" in names
-        assert "b.txt" in names
-        assert "c.md" in names
-
-    def test_sorted_determinism(self, tmp_path: Path):
-        (tmp_path / "z.md").write_text("z")
-        (tmp_path / "a.md").write_text("a")
-        (tmp_path / "m.md").write_text("m")
-
-        files = collect_source_files(tmp_path)
-        names = [f.name for f in files]
-        assert names == sorted(names)
-
-    def test_missing_dir_raises(self):
-        with pytest.raises(FileNotFoundError):
-            collect_source_files(Path("/nonexistent/path"))
-
-    def test_empty_dir(self, tmp_path: Path):
-        files = collect_source_files(tmp_path)
-        assert files == []
+def _doc(doc_id: str = "d1", content: str = "hello") -> CorpusDocument:
+    return CorpusDocument(doc_id=doc_id, content=content, source="s1")
 
 
 # ---------------------------------------------------------------------------
-# curate_file (mocked subprocess)
+# curate_doc (mocked subprocess)
 # ---------------------------------------------------------------------------
 
 
-class TestCurateFile:
-    def test_success(self, tmp_path: Path):
-        file = tmp_path / "test.md"
-        file.write_text("content")
-
+class TestCurateDoc:
+    def test_success(self):
         mock_proc = AsyncMock()
         mock_proc.returncode = 0
         mock_proc.communicate.return_value = (b"OK curated", b"")
@@ -70,17 +37,14 @@ class TestCurateFile:
             "brv_bench.commands.curate.asyncio.create_subprocess_exec",
             return_value=mock_proc,
         ) as mock_exec:
-            result = asyncio.run(curate_file(file))
+            result = asyncio.run(curate_doc(_doc(), PROMPT_CONFIG))
 
         assert result.success is True
         assert result.message == "OK curated"
-        assert result.file == file
+        assert result.doc_id == "d1"
         mock_exec.assert_called_once()
 
-    def test_failure(self, tmp_path: Path):
-        file = tmp_path / "bad.md"
-        file.write_text("content")
-
+    def test_failure(self):
         mock_proc = AsyncMock()
         mock_proc.returncode = 1
         mock_proc.communicate.return_value = (b"", b"Error: auth required")
@@ -89,10 +53,27 @@ class TestCurateFile:
             "brv_bench.commands.curate.asyncio.create_subprocess_exec",
             return_value=mock_proc,
         ):
-            result = asyncio.run(curate_file(file))
+            result = asyncio.run(curate_doc(_doc(), PROMPT_CONFIG))
 
         assert result.success is False
         assert "auth required" in result.message
+
+    def test_formats_with_template(self):
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate.return_value = (b"OK", b"")
+
+        with patch(
+            "brv_bench.commands.curate.asyncio.create_subprocess_exec",
+            return_value=mock_proc,
+        ) as mock_exec:
+            doc = CorpusDocument(doc_id="x1", content="body", source="src")
+            asyncio.run(curate_doc(doc, PROMPT_CONFIG))
+
+        call_args = mock_exec.call_args[0]
+        # The formatted content is the 3rd arg (after "brv", "curate")
+        assert "CURATE x1 src" in call_args[2]
+        assert "body" in call_args[2]
 
 
 # ---------------------------------------------------------------------------
@@ -101,10 +82,8 @@ class TestCurateFile:
 
 
 class TestCurate:
-    def test_all_succeed(self, tmp_path: Path):
-        (tmp_path / "a.md").write_text("a")
-        (tmp_path / "b.md").write_text("b")
-
+    def test_all_succeed(self):
+        corpus = (_doc("a"), _doc("b"))
         mock_proc = AsyncMock()
         mock_proc.returncode = 0
         mock_proc.communicate.return_value = (b"OK", b"")
@@ -113,17 +92,15 @@ class TestCurate:
             "brv_bench.commands.curate.asyncio.create_subprocess_exec",
             return_value=mock_proc,
         ):
-            summary = asyncio.run(curate(tmp_path))
+            summary = asyncio.run(curate(corpus, PROMPT_CONFIG))
 
         assert isinstance(summary, CurateSummary)
         assert summary.total == 2
         assert summary.succeeded == 2
         assert summary.failed == 0
 
-    def test_partial_failure(self, tmp_path: Path):
-        (tmp_path / "a.md").write_text("a")
-        (tmp_path / "b.md").write_text("b")
-
+    def test_partial_failure(self):
+        corpus = (_doc("a"), _doc("b"))
         call_count = 0
 
         async def mock_exec(*args, **kwargs):
@@ -142,14 +119,14 @@ class TestCurate:
             "brv_bench.commands.curate.asyncio.create_subprocess_exec",
             side_effect=mock_exec,
         ):
-            summary = asyncio.run(curate(tmp_path))
+            summary = asyncio.run(curate(corpus, PROMPT_CONFIG))
 
         assert summary.total == 2
         assert summary.succeeded == 1
         assert summary.failed == 1
 
-    def test_empty_dir(self, tmp_path: Path):
-        summary = asyncio.run(curate(tmp_path))
+    def test_empty_corpus(self):
+        summary = asyncio.run(curate((), PROMPT_CONFIG))
 
         assert summary.total == 0
         assert summary.succeeded == 0

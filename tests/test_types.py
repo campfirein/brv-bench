@@ -1,10 +1,11 @@
-"""Tests for brv_bench.types — all shared dataclasses."""
+"""Tests for brv_bench.types."""
 
 import pytest
 
 from brv_bench.types import (
+    BenchmarkDataset,
     BenchmarkReport,
-    GroundTruthDataset,
+    CorpusDocument,
     GroundTruthEntry,
     MetricResult,
     Percentiles,
@@ -12,150 +13,205 @@ from brv_bench.types import (
     SearchResult,
 )
 
-# =============================================================================
+
+# ----------------------------------------------------------------
+# CorpusDocument
+# ----------------------------------------------------------------
+
+
+class TestCorpusDocument:
+    def test_create(self):
+        doc = CorpusDocument(
+            doc_id="auth_oauth",
+            content="OAuth implementation details",
+            source="session_1",
+        )
+        assert doc.doc_id == "auth_oauth"
+        assert doc.content == "OAuth implementation details"
+        assert doc.source == "session_1"
+
+    def test_default_source(self):
+        doc = CorpusDocument(
+            doc_id="x", content="content"
+        )
+        assert doc.source == ""
+
+    def test_frozen(self):
+        doc = CorpusDocument(
+            doc_id="x", content="content"
+        )
+        with pytest.raises(AttributeError):
+            doc.doc_id = "y"  # type: ignore[misc]
+
+
+# ----------------------------------------------------------------
+# GroundTruthEntry
+# ----------------------------------------------------------------
 
 
 class TestGroundTruthEntry:
     def test_create_with_required_fields(self):
         entry = GroundTruthEntry(
             query="How does auth work?",
-            expected_docs=("auth/oauth.md",),
+            expected_doc_ids=("auth/oauth.md",),
         )
         assert entry.query == "How does auth work?"
-        assert entry.expected_docs == ("auth/oauth.md",)
+        assert entry.expected_doc_ids == ("auth/oauth.md",)
         assert entry.category == "unspecified"
+        assert entry.expected_answer is None
 
-    def test_create_with_category(self):
+    def test_create_with_all_fields(self):
         entry = GroundTruthEntry(
-            query="OAuth 2.0",
-            expected_docs=("auth/oauth.md",),
-            category="exact",
+            query="How does auth work?",
+            expected_doc_ids=("auth/oauth.md",),
+            category="single-hop",
+            expected_answer="Uses OAuth 2.0 with PKCE",
         )
-        assert entry.category == "exact"
+        assert entry.category == "single-hop"
+        assert entry.expected_answer == "Uses OAuth 2.0 with PKCE"
 
-    def test_multiple_expected_docs(self):
+    def test_multiple_expected_doc_ids(self):
         entry = GroundTruthEntry(
-            query="authentication",
-            expected_docs=("auth/oauth.md", "auth/jwt.md"),
+            query="Auth",
+            expected_doc_ids=("auth/oauth.md", "auth/jwt.md"),
         )
-        assert len(entry.expected_docs) == 2
+        assert len(entry.expected_doc_ids) == 2
 
     def test_frozen(self):
-        entry = GroundTruthEntry(query="test", expected_docs=())
-        with pytest.raises(AttributeError):
-            entry.query = "modified"
-
-
-# =============================================================================
-
-
-class TestGroundTruthDataset:
-    def test_create(self):
-        entries = (
-            GroundTruthEntry(query="q1", expected_docs=("a.md",)),
-            GroundTruthEntry(query="q2", expected_docs=("b.md",)),
+        entry = GroundTruthEntry(
+            query="test", expected_doc_ids=()
         )
-        dataset = GroundTruthDataset(name="test-dataset", entries=entries)
-        assert dataset.name == "test-dataset"
-        assert len(dataset.entries) == 2
+        with pytest.raises(AttributeError):
+            entry.query = "new"  # type: ignore[misc]
+
+
+# ----------------------------------------------------------------
+# BenchmarkDataset
+# ----------------------------------------------------------------
+
+
+class TestBenchmarkDataset:
+    def test_create(self):
+        corpus = (
+            CorpusDocument(doc_id="a", content="aaa"),
+            CorpusDocument(doc_id="b", content="bbb"),
+        )
+        entries = (
+            GroundTruthEntry(
+                query="q1", expected_doc_ids=("a",)
+            ),
+        )
+        dataset = BenchmarkDataset(
+            name="test", corpus=corpus, entries=entries
+        )
+        assert dataset.name == "test"
+        assert len(dataset.corpus) == 2
+        assert len(dataset.entries) == 1
 
     def test_empty_dataset(self):
-        dataset = GroundTruthDataset(name="empty", entries=())
+        dataset = BenchmarkDataset(
+            name="empty", corpus=(), entries=()
+        )
+        assert len(dataset.corpus) == 0
         assert len(dataset.entries) == 0
 
 
-# =============================================================================
+# ----------------------------------------------------------------
+# SearchResult
+# ----------------------------------------------------------------
 
 
 class TestSearchResult:
     def test_create(self):
-        result = SearchResult(
-            path="auth/oauth.md",
-            title="OAuth 2.0",
-            score=12.5,
-            excerpt="OAuth flow uses PKCE...",
+        r = SearchResult(
+            path="a.md", title="A", score=0.9, excerpt="..."
         )
-        assert result.path == "auth/oauth.md"
-        assert result.score == 12.5
+        assert r.path == "a.md"
+        assert r.score == 0.9
 
     def test_frozen(self):
-        result = SearchResult(path="a.md", title="A", score=1.0, excerpt="")
+        r = SearchResult(
+            path="a.md", title="A", score=0.9, excerpt="..."
+        )
         with pytest.raises(AttributeError):
-            result.score = 99.0
+            r.path = "b.md"  # type: ignore[misc]
 
 
-# =============================================================================
+# ----------------------------------------------------------------
+# QueryExecution
+# ----------------------------------------------------------------
 
 
 class TestQueryExecution:
     def test_create(self):
-        results = (
-            SearchResult(path="a.md", title="A", score=10.0, excerpt="..."),
-            SearchResult(path="b.md", title="B", score=5.0, excerpt="..."),
+        qe = QueryExecution(
+            query="test",
+            results=(
+                SearchResult(
+                    path="a.md",
+                    title="A",
+                    score=0.9,
+                    excerpt="...",
+                ),
+            ),
+            total_found=1,
+            duration_ms=5.0,
         )
-        execution = QueryExecution(
-            query="test query",
-            results=results,
-            total_found=2,
-            duration_ms=150.5,
-        )
-        assert execution.query == "test query"
-        assert len(execution.results) == 2
-        assert execution.duration_ms == 150.5
+        assert qe.query == "test"
+        assert len(qe.results) == 1
 
     def test_empty_results(self):
-        execution = QueryExecution(
-            query="no results",
+        qe = QueryExecution(
+            query="test",
             results=(),
             total_found=0,
-            duration_ms=10.0,
+            duration_ms=1.0,
         )
-        assert len(execution.results) == 0
+        assert qe.total_found == 0
 
 
-# =============================================================================
+# ----------------------------------------------------------------
+# MetricResult + Percentiles
+# ----------------------------------------------------------------
 
 
 class TestMetricResult:
     def test_create_without_percentiles(self):
-        result = MetricResult(
+        mr = MetricResult(
             name="precision@5",
             label="Precision@5",
             value=0.82,
             unit="ratio",
         )
-        assert result.value == 0.82
-        assert result.percentiles is None
+        assert mr.percentiles is None
 
     def test_create_with_percentiles(self):
-        result = MetricResult(
+        mr = MetricResult(
             name="cold-latency",
             label="Cold Latency",
-            value=120.5,
+            value=1.2,
             unit="ms",
-            percentiles=Percentiles(p50=100.0, p95=200.0, p99=350.0),
+            percentiles=Percentiles(
+                p50=1.1, p95=2.3, p99=3.1
+            ),
         )
-        assert result.percentiles is not None
-        assert result.percentiles.p50 == 100.0
-        assert result.percentiles.p99 == 350.0
+        assert mr.percentiles is not None
+        assert mr.percentiles.p50 == 1.1
 
 
-# =============================================================================
+# ----------------------------------------------------------------
+# BenchmarkReport
+# ----------------------------------------------------------------
 
 
 class TestBenchmarkReport:
     def test_create(self):
         report = BenchmarkReport(
-            name="test-report",
+            name="test",
             context_tree_docs=47,
             query_count=30,
             duration_ms=5000.0,
-            metrics=(
-                MetricResult(
-                    name="mrr", label="MRR", value=0.76, unit="ratio"
-                ),
-            ),
+            metrics=(),
         )
-        assert report.name == "test-report"
+        assert report.name == "test"
         assert report.context_tree_docs == 47
-        assert len(report.metrics) == 1

@@ -11,8 +11,24 @@ source scripts/source_env.sh
 
 To verify the setup, run:
 ```bash
-python src/main.py
+python -m brv_bench --help
 ```
+
+## Supported Datasets
+
+| Dataset | Description | Corpus | Queries | Download |
+|---------|-------------|--------|---------|----------|
+| LoCoMo | Long-term conversation memory QA (10 conversations, 272 sessions) | 272 docs | 1982 | [locomo10.json](https://github.com/snap-research/locomo/blob/main/data/locomo10.json) |
+
+## Preparing the Dataset
+
+Transform the raw LoCoMo JSON into brv-bench's canonical format:
+
+```bash
+python scripts/transform_locomo.py locomo10.json output/locomo_benchmark.json
+```
+
+This produces a single JSON file with corpus documents (one per session) and ground-truth QA entries.
 
 ## Usage
 
@@ -21,76 +37,74 @@ brv-bench has two commands: `curate` and `evaluate`. Both run from your project 
 ### 1. Curate (populate the context tree)
 
 ```bash
-cd ~/workspace/your-project
-python -m brv_bench curate --source datasets/your-project/
+python -m brv_bench curate --ground-truth output/locomo_benchmark.json
 ```
 
-This calls `brv curate` for each source file, populating `.brv/context-tree/`.
-Run once, or whenever your source material changes.
+Loads the benchmark dataset, formats each corpus document with the dataset-specific prompt template, and calls `brv curate` sequentially (272 docs for LoCoMo). Run once, or whenever your curate strategy changes.
+
+**Pre-curated context tree for LoCoMo:** To skip curation, download and extract into your `.brv/` directory:
+[locomo_context_tree.zip](https://drive.google.com/file/d/1JaZWr96bSfHAlQahXcT55rHH3to38dZu/view?usp=drive_link)
 
 ### 2. Evaluate (measure retrieval quality)
 
 ```bash
-cd ~/workspace/your-project
-python -m brv_bench evaluate --ground-truth datasets/your-project/ground_truth.json
+python -m brv_bench evaluate --ground-truth output/locomo_benchmark.json --output output/results.json
 ```
 
-This calls `brv query --headless --format json` for each query in the ground truth,
-compares results against expected documents, and reports metrics.
-Run as many times as you want -- after tuning search, changing curate strategy, etc.
+Queries the context tree for each ground-truth entry (1982 for LoCoMo), computes metrics (Precision, Recall, MRR, Diversity, F1, Exact Match), and saves results.
+
+- `--output` saves per-query results **incrementally** (crash-safe) and the final report with metrics.
+- Without `--output`, results are printed to stdout only.
+- Run as many times as you want -- after tuning search, changing curate strategy, etc.
 
 ### Example output
 
 ```
-================================================================
-  brv-bench: Context Tree Retrieval Benchmark
-================================================================
-  Dataset:      byterover-cli
-  Context tree: 47 documents
-  Queries:      30
-  Runs:         3
-----------------------------------------------------------------
+Benchmark: locomo
+Corpus docs: 272
+Queries: 1982
+Duration: 125000.0ms
 
-  Quality Metrics:
-  ----------------------------------------
-  Precision@5          82.3%
-  Precision@10         71.5%
-  Recall@5             68.0%
-  Recall@10            85.2%
-  MRR                  0.76
-  Diversity@5          0.89
+  Precision@5       68.00%
+  Precision@10      71.50%
+  Recall@5          68.00%
+  Recall@10         85.20%
+  MRR               76.00%
+  Diversity@5       89.00%
+  Cold Latency        1.20 s
+  F1 Score          45.00%
+  Exact Match       21.00%
 
-  Latency Metrics:
-  --------------------------------------------------------
-  Metric               Mean     p50      p95      p99
-  --------------------------------------------------------
-  Cold Latency         1.2s     1.1s     2.3s     3.1s
-  Warm Latency         0.8s     0.7s     1.5s     2.0s
-================================================================
+Results saved to output/results.json
 ```
 
 ## Ground Truth Format
 
 ```json
 {
-  "name": "byterover-cli",
+  "name": "locomo",
+  "corpus": [
+    {
+      "doc_id": "conv-26_s1",
+      "content": "Session transcript...",
+      "source": "session_1"
+    }
+  ],
   "entries": [
     {
-      "query": "How is OAuth authentication implemented?",
-      "expected_docs": ["authentication/oauth_2_0_and_pkce_authentication.md"],
-      "category": "natural-language"
-    },
-    {
-      "query": "OAuth 2.0 and PKCE Authentication",
-      "expected_docs": ["authentication/oauth_2_0_and_pkce_authentication.md"],
-      "category": "exact"
+      "query": "What career path has Caroline decided to pursue?",
+      "expected_doc_ids": ["conv-26_s1", "conv-26_s4"],
+      "category": "multi-hop",
+      "expected_answer": "counseling or mental health for transgender people"
     }
   ]
 }
 ```
 
-- `expected_docs`: paths relative to `.brv/context-tree/`
-- `category`: optional, for per-category analysis (`exact`, `fuzzy`, `synonym`, `natural-language`)
+- `corpus`: documents to curate into the context tree (used by the `curate` command)
+- `expected_doc_ids`: doc IDs that contain evidence for the answer
+- `expected_answer`: ground-truth answer for F1/Exact Match scoring
+- `category`: optional, for per-category analysis (LoCoMo uses `single-hop`, `multi-hop`, `temporal`, `commonsense`, `adversarial`)
 
 ## Metrics
 
@@ -100,6 +114,8 @@ Run as many times as you want -- after tuning search, changing curate strategy, 
 | Recall@K | Fraction of relevant documents found in top-K |
 | MRR | Reciprocal rank of the first relevant result |
 | Result Diversity | 1 - mean pairwise similarity in top-K (higher = more diverse) |
+| F1 Score | Token-overlap F1 between predicted and expected answers (with Porter stemming) |
+| Exact Match | Normalized string equality of predicted vs expected answers |
 | Cold Latency | Query time with no cache (p50/p95/p99) |
 | Warm Latency | Query time with warm cache (p50/p95/p99) |
 
