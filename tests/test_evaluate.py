@@ -22,7 +22,6 @@ from brv_bench.types import (
     SearchResult,
 )
 
-
 # ----------------------------------------------------------------
 # Fixtures
 # ----------------------------------------------------------------
@@ -36,9 +35,7 @@ def _make_adapter(
     adapter.name = "mock"
     adapter.supports_warm_latency = False
 
-    async def mock_query(
-        query: str, limit: int
-    ) -> QueryExecution:
+    async def mock_query(query: str, limit: int) -> QueryExecution:
         return results_map.get(
             query,
             QueryExecution(
@@ -53,9 +50,7 @@ def _make_adapter(
     return adapter
 
 
-def _perfect_result(
-    query: str, docs: tuple[str, ...]
-) -> QueryExecution:
+def _perfect_result(query: str, docs: tuple[str, ...]) -> QueryExecution:
     return QueryExecution(
         query=query,
         results=tuple(
@@ -73,12 +68,8 @@ def _perfect_result(
 
 
 CORPUS = (
-    CorpusDocument(
-        doc_id="auth/oauth.md", content="OAuth details"
-    ),
-    CorpusDocument(
-        doc_id="db/schema.md", content="DB schema"
-    ),
+    CorpusDocument(doc_id="auth/oauth.md", content="OAuth details"),
+    CorpusDocument(doc_id="db/schema.md", content="DB schema"),
     CorpusDocument(
         doc_id="db/migrations.md",
         content="DB migrations",
@@ -123,9 +114,7 @@ class TestRunQueries:
             ),
         }
         adapter = _make_adapter(results_map)
-        pairs = asyncio.run(
-            run_queries(adapter, DATASET.entries, limit=10)
-        )
+        pairs = asyncio.run(run_queries(adapter, DATASET.entries, limit=10))
 
         assert len(pairs) == 2
         assert pairs[0][1].query == "How does auth work?"
@@ -133,19 +122,13 @@ class TestRunQueries:
 
     def test_query_called_with_correct_limit(self):
         adapter = _make_adapter({})
-        entries = (
-            GroundTruthEntry(
-                query="test", expected_doc_ids=("a.md",)
-            ),
-        )
+        entries = (GroundTruthEntry(query="test", expected_doc_ids=("a.md",)),)
         asyncio.run(run_queries(adapter, entries, limit=5))
         adapter.query.assert_called_once_with("test", 5)
 
     def test_empty_entries(self):
         adapter = _make_adapter({})
-        pairs = asyncio.run(
-            run_queries(adapter, (), limit=10)
-        )
+        pairs = asyncio.run(run_queries(adapter, (), limit=10))
         assert pairs == []
 
 
@@ -159,9 +142,7 @@ class TestComputeMetrics:
         pairs = [
             (
                 _perfect_result("q1", ("a.md",)),
-                GroundTruthEntry(
-                    query="q1", expected_doc_ids=("a.md",)
-                ),
+                GroundTruthEntry(query="q1", expected_doc_ids=("a.md",)),
             ),
         ]
         metrics = [PrecisionAtK(5), PrecisionAtK(10)]
@@ -175,9 +156,7 @@ class TestComputeMetrics:
         pairs = [
             (
                 _perfect_result("q1", ("a.md",)),
-                GroundTruthEntry(
-                    query="q1", expected_doc_ids=("a.md",)
-                ),
+                GroundTruthEntry(query="q1", expected_doc_ids=("a.md",)),
             ),
         ]
         results = compute_metrics([], pairs)
@@ -208,9 +187,7 @@ class TestEvaluate:
         adapter = _make_adapter(results_map)
         metrics = [PrecisionAtK(5)]
 
-        report = asyncio.run(
-            evaluate(adapter, DATASET, metrics, limit=10)
-        )
+        report = asyncio.run(evaluate(adapter, DATASET, metrics, limit=10))
 
         assert isinstance(report, BenchmarkReport)
         assert report.name == "test-dataset"
@@ -223,9 +200,7 @@ class TestEvaluate:
 
     def test_calls_setup_reset_teardown(self):
         adapter = _make_adapter({})
-        dataset = BenchmarkDataset(
-            name="empty", corpus=(), entries=()
-        )
+        dataset = BenchmarkDataset(name="empty", corpus=(), entries=())
         metrics = [PrecisionAtK(5)]
 
         asyncio.run(evaluate(adapter, dataset, metrics))
@@ -236,21 +211,11 @@ class TestEvaluate:
 
     def test_teardown_called_on_error(self):
         adapter = _make_adapter({})
-        adapter.reset.side_effect = RuntimeError(
-            "reset failed"
-        )
-        dataset = BenchmarkDataset(
-            name="err", corpus=(), entries=()
-        )
+        adapter.reset.side_effect = RuntimeError("reset failed")
+        dataset = BenchmarkDataset(name="err", corpus=(), entries=())
 
-        with pytest.raises(
-            RuntimeError, match="reset failed"
-        ):
-            asyncio.run(
-                evaluate(
-                    adapter, dataset, [PrecisionAtK(5)]
-                )
-            )
+        with pytest.raises(RuntimeError, match="reset failed"):
+            asyncio.run(evaluate(adapter, dataset, [PrecisionAtK(5)]))
 
         adapter.teardown.assert_awaited_once()
 
@@ -267,13 +232,11 @@ class TestEvaluate:
         adapter = _make_adapter(results_map)
 
         report = asyncio.run(
-            evaluate(
-                adapter, DATASET, default_metrics(), limit=10
-            )
+            evaluate(adapter, DATASET, default_metrics(), limit=10)
         )
 
         assert report.query_count == 2
-        assert len(report.metrics) == 9
+        assert len(report.metrics) == 11
         metric_names = {m.name for m in report.metrics}
         assert "precision@5" in metric_names
         assert "recall@10" in metric_names
