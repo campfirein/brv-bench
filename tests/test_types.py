@@ -13,7 +13,6 @@ from brv_bench.types import (
     SearchResult,
 )
 
-
 # ----------------------------------------------------------------
 # CorpusDocument
 # ----------------------------------------------------------------
@@ -31,15 +30,11 @@ class TestCorpusDocument:
         assert doc.source == "session_1"
 
     def test_default_source(self):
-        doc = CorpusDocument(
-            doc_id="x", content="content"
-        )
+        doc = CorpusDocument(doc_id="x", content="content")
         assert doc.source == ""
 
     def test_frozen(self):
-        doc = CorpusDocument(
-            doc_id="x", content="content"
-        )
+        doc = CorpusDocument(doc_id="x", content="content")
         with pytest.raises(AttributeError):
             doc.doc_id = "y"  # type: ignore[misc]
 
@@ -78,9 +73,7 @@ class TestGroundTruthEntry:
         assert len(entry.expected_doc_ids) == 2
 
     def test_frozen(self):
-        entry = GroundTruthEntry(
-            query="test", expected_doc_ids=()
-        )
+        entry = GroundTruthEntry(query="test", expected_doc_ids=())
         with pytest.raises(AttributeError):
             entry.query = "new"  # type: ignore[misc]
 
@@ -96,22 +89,14 @@ class TestBenchmarkDataset:
             CorpusDocument(doc_id="a", content="aaa"),
             CorpusDocument(doc_id="b", content="bbb"),
         )
-        entries = (
-            GroundTruthEntry(
-                query="q1", expected_doc_ids=("a",)
-            ),
-        )
-        dataset = BenchmarkDataset(
-            name="test", corpus=corpus, entries=entries
-        )
+        entries = (GroundTruthEntry(query="q1", expected_doc_ids=("a",)),)
+        dataset = BenchmarkDataset(name="test", corpus=corpus, entries=entries)
         assert dataset.name == "test"
         assert len(dataset.corpus) == 2
         assert len(dataset.entries) == 1
 
     def test_empty_dataset(self):
-        dataset = BenchmarkDataset(
-            name="empty", corpus=(), entries=()
-        )
+        dataset = BenchmarkDataset(name="empty", corpus=(), entries=())
         assert len(dataset.corpus) == 0
         assert len(dataset.entries) == 0
 
@@ -123,16 +108,12 @@ class TestBenchmarkDataset:
 
 class TestSearchResult:
     def test_create(self):
-        r = SearchResult(
-            path="a.md", title="A", score=0.9, excerpt="..."
-        )
+        r = SearchResult(path="a.md", title="A", score=0.9, excerpt="...")
         assert r.path == "a.md"
         assert r.score == 0.9
 
     def test_frozen(self):
-        r = SearchResult(
-            path="a.md", title="A", score=0.9, excerpt="..."
-        )
+        r = SearchResult(path="a.md", title="A", score=0.9, excerpt="...")
         with pytest.raises(AttributeError):
             r.path = "b.md"  # type: ignore[misc]
 
@@ -191,9 +172,7 @@ class TestMetricResult:
             label="Cold Latency",
             value=1.2,
             unit="ms",
-            percentiles=Percentiles(
-                p50=1.1, p95=2.3, p99=3.1
-            ),
+            percentiles=Percentiles(p50=1.1, p95=2.3, p99=3.1),
         )
         assert mr.percentiles is not None
         assert mr.percentiles.p50 == 1.1
@@ -208,10 +187,12 @@ class TestBenchmarkReport:
     def test_create(self):
         report = BenchmarkReport(
             name="test",
+            memory_system="brv-cli",
             context_tree_docs=47,
             query_count=30,
             duration_ms=5000.0,
             metrics=(),
         )
         assert report.name == "test"
+        assert report.memory_system == "brv-cli"
         assert report.context_tree_docs == 47

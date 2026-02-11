@@ -103,9 +103,7 @@ def _save_partial(
     data = {
         "status": "in_progress",
         "completed": len(pairs),
-        "pairs": [
-            _pair_to_dict(qe, gt) for qe, gt in pairs
-        ],
+        "pairs": [_pair_to_dict(qe, gt) for qe, gt in pairs],
     }
     output_path.write_text(json.dumps(data, indent=2))
 
@@ -152,15 +150,14 @@ async def evaluate(
         await adapter.reset()
 
         start = time.perf_counter()
-        pairs = await run_queries(
-            adapter, dataset.entries, limit, output_path
-        )
+        pairs = await run_queries(adapter, dataset.entries, limit, output_path)
         duration_ms = (time.perf_counter() - start) * 1000
 
         metric_results = compute_metrics(metrics, pairs)
 
         report = BenchmarkReport(
             name=dataset.name,
+            memory_system=adapter.name,
             context_tree_docs=len(dataset.corpus),
             query_count=len(dataset.entries),
             duration_ms=duration_ms,
@@ -195,8 +192,6 @@ def _save_report(
             }
             for m in report.metrics
         },
-        "pairs": [
-            _pair_to_dict(qe, gt) for qe, gt in pairs
-        ],
+        "pairs": [_pair_to_dict(qe, gt) for qe, gt in pairs],
     }
     output_path.write_text(json.dumps(data, indent=2))

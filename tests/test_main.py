@@ -10,7 +10,6 @@ import pytest
 from brv_bench.__main__ import load_dataset, main, parse_args
 from brv_bench.types import BenchmarkDataset
 
-
 # ----------------------------------------------------------------
 # parse_args
 # ----------------------------------------------------------------
@@ -23,9 +22,7 @@ class TestParseArgs:
         assert args.ground_truth == Path("/some/path.json")
 
     def test_evaluate_command(self):
-        args = parse_args(
-            ["evaluate", "--ground-truth", "gt.json"]
-        )
+        args = parse_args(["evaluate", "--ground-truth", "gt.json"])
         assert args.command == "evaluate"
         assert args.ground_truth == Path("gt.json")
         assert args.limit == 10
@@ -103,9 +100,7 @@ class TestLoadDataset:
         assert dataset.corpus[0].source == "session_1"
         assert dataset.corpus[1].source == ""
         assert len(dataset.entries) == 2
-        assert dataset.entries[0].expected_doc_ids == (
-            "auth/oauth.md",
-        )
+        assert dataset.entries[0].expected_doc_ids == ("auth/oauth.md",)
         assert dataset.entries[0].category == "single-hop"
         assert dataset.entries[0].expected_answer == "Uses OAuth"
         assert dataset.entries[1].category == "unspecified"
@@ -170,8 +165,7 @@ class TestMain:
         mock_proc.communicate.return_value = (b"OK", b"")
 
         with patch(
-            "brv_bench.commands.curate"
-            ".asyncio.create_subprocess_exec",
+            "brv_bench.commands.curate.asyncio.create_subprocess_exec",
             return_value=mock_proc,
         ):
             code = asyncio.run(
@@ -180,9 +174,7 @@ class TestMain:
 
         assert code == 0
 
-    def test_curate_with_failures_returns_1(
-        self, tmp_path: Path
-    ):
+    def test_curate_with_failures_returns_1(self, tmp_path: Path):
         gt_file = _locomo_dataset(tmp_path)
 
         mock_proc = AsyncMock()
@@ -190,8 +182,7 @@ class TestMain:
         mock_proc.communicate.return_value = (b"", b"error")
 
         with patch(
-            "brv_bench.commands.curate"
-            ".asyncio.create_subprocess_exec",
+            "brv_bench.commands.curate.asyncio.create_subprocess_exec",
             return_value=mock_proc,
         ):
             code = asyncio.run(
@@ -200,10 +191,9 @@ class TestMain:
 
         assert code == 1
 
-    def test_evaluate_runs_pipeline(
-        self, tmp_path: Path
-    ):
+    def test_evaluate_runs_pipeline(self, tmp_path: Path):
         gt_file = _locomo_dataset(tmp_path)
+        output_file = tmp_path / "results.json"
 
         mock_proc = AsyncMock()
         mock_proc.returncode = 0
@@ -212,8 +202,7 @@ class TestMain:
             b"",
         )
         with patch(
-            "brv_bench.adapters.brv_cli"
-            ".asyncio.create_subprocess_exec",
+            "brv_bench.adapters.brv_cli.asyncio.create_subprocess_exec",
             return_value=mock_proc,
         ):
             code = asyncio.run(
@@ -222,6 +211,8 @@ class TestMain:
                         "evaluate",
                         "--ground-truth",
                         str(gt_file),
+                        "--output",
+                        str(output_file),
                     ]
                 )
             )

@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from brv_bench.adapters.brv_cli import BrvCliAdapter
@@ -11,7 +12,13 @@ from brv_bench.commands.curate import curate
 from brv_bench.commands.evaluate import evaluate
 from brv_bench.datasets.locomo import PROMPT_CONFIG as LOCOMO_PROMPT_CONFIG
 from brv_bench.metrics import default_metrics
-from brv_bench.types import BenchmarkDataset, CorpusDocument, GroundTruthEntry, PromptConfig
+from brv_bench.reporting.terminal import format_report, save_summary
+from brv_bench.types import (
+    BenchmarkDataset,
+    CorpusDocument,
+    GroundTruthEntry,
+    PromptConfig,
+)
 
 # =============================================================================
 
@@ -21,13 +28,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="brv-bench",
         description=(
-            "Benchmark suite for AI agent context"
-            " retrieval systems."
+            "Benchmark suite for AI agent context retrieval systems."
         ),
     )
-    subparsers = parser.add_subparsers(
-        dest="command", required=True
-    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
     # --- curate ---
     curate_parser = subparsers.add_parser(
@@ -101,9 +105,7 @@ def load_dataset(path: Path) -> BenchmarkDataset:
         )
         for e in data["entries"]
     )
-    return BenchmarkDataset(
-        name=data["name"], corpus=corpus, entries=entries
-    )
+    return BenchmarkDataset(name=data["name"], corpus=corpus, entries=entries)
 
 
 DATASET_PROMPT_CONFIGS: dict[str, PromptConfig] = {
@@ -130,10 +132,7 @@ async def main(argv: list[str] | None = None) -> int:
         dataset = load_dataset(args.ground_truth)
         prompt_config = _resolve_prompt_config(dataset.name)
         summary = await curate(dataset.corpus, prompt_config)
-        print(
-            f"Curated {summary.succeeded}/{summary.total}"
-            " documents."
-        )
+        print(f"Curated {summary.succeeded}/{summary.total} documents.")
         if summary.failed > 0:
             for r in summary.results:
                 if not r.success:
@@ -151,26 +150,28 @@ async def main(argv: list[str] | None = None) -> int:
 
         adapter = BrvCliAdapter(prompt_config=prompt_config)
 
+        output_path = args.output
+        if output_path is None:
+            report_dir = Path("report")
+            report_dir.mkdir(exist_ok=True)
+            stamp = datetime.now().strftime("%Y%m%d")
+            stem = f"{stamp}_{dataset.name}_{adapter.name}"
+            output_path = report_dir / f"{stem}.json"
+
         report = await evaluate(
-            adapter, dataset, metrics,
-            limit=args.limit, output_path=args.output,
+            adapter,
+            dataset,
+            metrics,
+            limit=args.limit,
+            output_path=output_path,
         )
 
-        print(f"Benchmark: {report.name}")
-        print(f"Corpus docs: {report.context_tree_docs}")
-        print(f"Queries: {report.query_count}")
-        print(f"Duration: {report.duration_ms:.1f}ms")
-        print()
-        max_label = max(len(m.label) for m in report.metrics)
-        for m in report.metrics:
-            if m.unit == "ratio":
-                val = f"{m.value:.2%}"
-            else:
-                val = f"{m.value:.2f} {m.unit}"
-            print(f"  {m.label:<{max_label}}  {val:>12}")
+        print(format_report(report))
 
-        if args.output:
-            print(f"\nResults saved to {args.output}")
+        save_summary(report, output_path.with_suffix(".txt"))
+
+        print(f"\nResults saved to {output_path}")
+        print(f"Summary saved to {output_path.with_suffix('.txt')}")
 
         return 0
 

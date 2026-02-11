@@ -108,6 +108,7 @@ class BenchmarkReport:
     """Full benchmark report."""
 
     name: str
+    memory_system: str
     context_tree_docs: int
     query_count: int
     duration_ms: float
