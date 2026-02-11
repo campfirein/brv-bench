@@ -70,6 +70,38 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Path to save results JSON (incremental + final).",
     )
 
+    # LLM-as-Judge options
+    eval_parser.add_argument(
+        "--judge",
+        action="store_true",
+        default=False,
+        help="Enable LLM-as-Judge answer correctness metric.",
+    )
+    eval_parser.add_argument(
+        "--judge-backend",
+        choices=["anthropic", "gemini", "openai"],
+        default="gemini",
+        help="LLM backend for the judge (default: gemini).",
+    )
+    eval_parser.add_argument(
+        "--judge-model",
+        type=str,
+        default=None,
+        help="Model name for the judge (default: backend-specific).",
+    )
+    eval_parser.add_argument(
+        "--judge-concurrency",
+        type=int,
+        default=5,
+        help="Max parallel judge API calls (default: 5).",
+    )
+    eval_parser.add_argument(
+        "--judge-cache",
+        type=Path,
+        default=None,
+        help="Path to JSON file for caching judge verdicts.",
+    )
+
     return parser.parse_args(argv)
 
 
@@ -131,6 +163,24 @@ async def main(argv: list[str] | None = None) -> int:
     elif args.command == "evaluate":
         dataset = load_dataset(args.ground_truth)
         metrics = default_metrics()
+
+        if args.judge:
+            from brv_bench.metrics._judge.client import (
+                create_judge_client,
+            )
+            from brv_bench.metrics.llm_judge import LLMJudge
+
+            client = create_judge_client(
+                backend=args.judge_backend,
+                model=args.judge_model,
+            )
+            judge_metric = LLMJudge(
+                client=client,
+                concurrency=args.judge_concurrency,
+                cache_path=args.judge_cache,
+            )
+            metrics.append(judge_metric)
+
         prompt_config = get_prompt_config(dataset.name)
 
         adapter = BrvCliAdapter(prompt_config=prompt_config)

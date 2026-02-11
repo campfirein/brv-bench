@@ -58,6 +58,53 @@ Queries the context tree for each ground-truth entry (1982 for LoCoMo), computes
 - Per-query results are saved **incrementally** (crash-safe).
 - Run as many times as you want -- after tuning search, changing curate strategy, etc.
 
+### 3. Evaluate with LLM-as-Judge
+
+brv-bench supports an **LLM-as-Judge** metric that uses an LLM to evaluate whether predicted answers are semantically correct. This is the primary answer-quality metric, following the methodology of [LongMemEval](https://arxiv.org/abs/2410.10813) (ICLR 2025, 97% human agreement).
+
+#### Setup
+
+1. Install the judge dependencies:
+
+```bash
+pip install 'brv-bench[judge]'
+```
+
+2. Set your API key as an environment variable. 
+
+```bash
+export GEMINI_API_KEY="your-api-key-here"
+```
+
+Then reload your shell: `source ~/.zshrc`
+
+You can get a Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey).
+
+For other backends, set the corresponding key instead:
+- **Anthropic:** `export ANTHROPIC_API_KEY="your-key"`
+- **OpenAI:** `export OPENAI_API_KEY="your-key"`
+
+#### Run
+
+```bash
+python -m brv_bench evaluate \
+  --ground-truth output/locomo_benchmark.json \
+  --judge \
+  --judge-cache report/judge_cache.json
+```
+
+The `--judge-cache` flag saves verdicts to a JSON file so re-runs don't repeat API calls for unchanged answers.
+
+#### Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--judge` | off | Enable LLM-as-Judge metric |
+| `--judge-backend` | `gemini` | LLM backend: `gemini`, `anthropic`, or `openai` |
+| `--judge-model` | backend default | Model name override (e.g. `gemini-2.5-flash`, `gpt-4o`) |
+| `--judge-concurrency` | `5` | Max parallel judge API calls |
+| `--judge-cache` | none | Path to JSON cache file for verdicts |
+
 ### Example output
 
 ```
@@ -68,16 +115,19 @@ Queries the context tree for each ground-truth entry (1982 for LoCoMo), computes
   Queries:       1982
 ----------------------------------------------------------------
 
-  Quality Metrics:
+  Quality Metrics (Overall):
   ----------------------------------------
   Precision@5        68.0%
   Precision@10       71.5%
   Recall@5           68.0%
   Recall@10          85.2%
+  NDCG@5              0.72
+  NDCG@10             0.78
   MRR                 0.76
   Diversity@5         0.89
   F1 Score           45.0%
   Exact Match        21.0%
+  LLM Judge          74.5%
 
   Latency Metrics:
   --------------------------------------------------------
@@ -89,6 +139,8 @@ Queries the context tree for each ground-truth entry (1982 for LoCoMo), computes
 Results saved to report/20260211_locomo_brv-cli.json
 Summary saved to report/20260211_locomo_brv-cli.txt
 ```
+
+> **Note:** LLM Judge only appears when `--judge` is enabled.
 
 ## Ground Truth Format
 
@@ -122,14 +174,15 @@ Summary saved to report/20260211_locomo_brv-cli.txt
 
 | Metric | What It Measures |
 |--------|-----------------|
+| LLM Judge | LLM-as-Judge binary correctness (requires `--judge` flag) |
 | Precision@K | Fraction of top-K results that are relevant |
 | Recall@K | Fraction of relevant documents found in top-K |
+| NDCG@K | Normalized Discounted Cumulative Gain — ranking quality of top-K |
 | MRR | Reciprocal rank of the first relevant result |
 | Result Diversity | 1 - mean pairwise similarity in top-K (higher = more diverse) |
 | F1 Score | Token-overlap F1 between predicted and expected answers (with Porter stemming) |
 | Exact Match | Normalized string equality of predicted vs expected answers |
 | Cold Latency | Query time with no cache (p50/p95/p99) |
-| Warm Latency | Query time with warm cache (p50/p95/p99) |
 
 ## Requirements
 
