@@ -7,6 +7,7 @@ import pytest
 
 from brv_bench.adapters.base import RetrievalAdapter
 from brv_bench.commands.evaluate import (
+    compute_category_breakdown,
     compute_metrics,
     evaluate,
     run_queries,
@@ -169,6 +170,100 @@ class TestComputeMetrics:
 
 
 # ----------------------------------------------------------------
+# compute_category_breakdown
+# ----------------------------------------------------------------
+
+
+class TestComputeCategoryBreakdown:
+    def test_groups_by_category(self):
+        pairs = [
+            (
+                _perfect_result("q1", ("a.md",)),
+                GroundTruthEntry(
+                    query="q1",
+                    expected_doc_ids=("a.md",),
+                    category="single-hop",
+                ),
+            ),
+            (
+                _perfect_result("q2", ("b.md",)),
+                GroundTruthEntry(
+                    query="q2",
+                    expected_doc_ids=("b.md",),
+                    category="temporal",
+                ),
+            ),
+            (
+                _perfect_result("q3", ("c.md",)),
+                GroundTruthEntry(
+                    query="q3",
+                    expected_doc_ids=("c.md",),
+                    category="single-hop",
+                ),
+            ),
+        ]
+        breakdown = compute_category_breakdown([PrecisionAtK(5)], pairs)
+
+        assert len(breakdown) == 2
+        # Alphabetically sorted
+        assert breakdown[0].category == "single-hop"
+        assert breakdown[0].query_count == 2
+        assert breakdown[1].category == "temporal"
+        assert breakdown[1].query_count == 1
+
+    def test_metrics_computed_per_group(self):
+        pairs = [
+            # single-hop: perfect hit
+            (
+                _perfect_result("q1", ("a.md",)),
+                GroundTruthEntry(
+                    query="q1",
+                    expected_doc_ids=("a.md",),
+                    category="single-hop",
+                ),
+            ),
+            # temporal: zero hit
+            (
+                _perfect_result("q2", ("x.md",)),
+                GroundTruthEntry(
+                    query="q2",
+                    expected_doc_ids=("a.md",),
+                    category="temporal",
+                ),
+            ),
+        ]
+        breakdown = compute_category_breakdown([PrecisionAtK(5)], pairs)
+
+        single_hop = breakdown[0]
+        assert single_hop.category == "single-hop"
+        assert single_hop.metrics[0].value == 1.0
+
+        temporal = breakdown[1]
+        assert temporal.category == "temporal"
+        assert temporal.metrics[0].value == 0.0
+
+    def test_empty_pairs(self):
+        breakdown = compute_category_breakdown([PrecisionAtK(5)], [])
+        assert breakdown == ()
+
+    def test_single_category(self):
+        pairs = [
+            (
+                _perfect_result("q1", ("a.md",)),
+                GroundTruthEntry(
+                    query="q1",
+                    expected_doc_ids=("a.md",),
+                    category="multi-hop",
+                ),
+            ),
+        ]
+        breakdown = compute_category_breakdown([PrecisionAtK(5)], pairs)
+        assert len(breakdown) == 1
+        assert breakdown[0].category == "multi-hop"
+        assert breakdown[0].query_count == 1
+
+
+# ----------------------------------------------------------------
 # evaluate (full pipeline)
 # ----------------------------------------------------------------
 
@@ -197,6 +292,11 @@ class TestEvaluate:
         assert len(report.metrics) == 1
         assert report.metrics[0].name == "precision@5"
         assert report.metrics[0].value == 1.0
+
+        # Category breakdown populated from DATASET categories
+        assert len(report.category_breakdown) == 2
+        cats = {cr.category for cr in report.category_breakdown}
+        assert cats == {"exact", "natural-language"}
 
     def test_calls_setup_reset_teardown(self):
         adapter = _make_adapter({})
