@@ -22,7 +22,7 @@ import asyncio
 import hashlib
 import json
 import logging
-from concurrent.futures import ThreadPoolExecutor
+import threading
 from pathlib import Path
 
 from brv_bench.metrics._judge.client import JudgeClient, JudgeVerdict
@@ -213,14 +213,29 @@ class LLMJudge(Metric):
 
     # ── Sync / Async bridge ──────────────────────────────────────
 
-    @staticmethod
-    def _run_async(coro: object) -> dict[str, JudgeVerdict]:
+    def _ensure_loop(self) -> asyncio.AbstractEventLoop:
+        """Return a persistent event loop running in a background thread.
+
+        The loop is created once and reused across calls so that the
+        LLM client's httpx connection pool stays bound to a single,
+        *open* event loop for the lifetime of this metric instance.
+        """
+        if hasattr(self, "_loop") and self._loop.is_running():
+            return self._loop
+        loop = asyncio.new_event_loop()
+        thread = threading.Thread(target=loop.run_forever, daemon=True)
+        thread.start()
+        self._loop = loop
+        self._loop_thread = thread
+        return loop
+
+    def _run_async(self, coro: object) -> dict[str, JudgeVerdict]:
         """Run an async coroutine from synchronous code.
 
-        Uses a dedicated thread with its own event loop so this works
-        safely even when called from within an already-running loop
-        (which is the case in ``evaluate()``).
+        Uses a persistent event loop in a dedicated background thread
+        so this works safely even when called from within an
+        already-running loop (which is the case in ``evaluate()``).
         """
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(asyncio.run, coro)
-            return future.result()
+        loop = self._ensure_loop()
+        future = asyncio.run_coroutine_threadsafe(coro, loop)  # type: ignore[arg-type]
+        return future.result()
