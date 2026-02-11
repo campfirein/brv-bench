@@ -5,6 +5,7 @@ import pytest
 from brv_bench.types import (
     BenchmarkDataset,
     BenchmarkReport,
+    CategoryResult,
     CorpusDocument,
     GroundTruthEntry,
     MetricResult,
@@ -179,6 +180,34 @@ class TestMetricResult:
 
 
 # ----------------------------------------------------------------
+# CategoryResult
+# ----------------------------------------------------------------
+
+
+class TestCategoryResult:
+    def test_create(self):
+        m = MetricResult(
+            name="precision@5",
+            label="Precision@5",
+            value=0.8,
+            unit="ratio",
+        )
+        cr = CategoryResult(
+            category="multi-hop",
+            query_count=25,
+            metrics=(m,),
+        )
+        assert cr.category == "multi-hop"
+        assert cr.query_count == 25
+        assert len(cr.metrics) == 1
+
+    def test_frozen(self):
+        cr = CategoryResult(category="x", query_count=1, metrics=())
+        with pytest.raises(AttributeError):
+            cr.category = "y"  # type: ignore[misc]
+
+
+# ----------------------------------------------------------------
 # BenchmarkReport
 # ----------------------------------------------------------------
 
@@ -196,3 +225,29 @@ class TestBenchmarkReport:
         assert report.name == "test"
         assert report.memory_system == "brv-cli"
         assert report.context_tree_docs == 47
+        assert report.category_breakdown == ()
+
+    def test_create_with_breakdown(self):
+        cr = CategoryResult(
+            category="temporal",
+            query_count=10,
+            metrics=(
+                MetricResult(
+                    name="recall@5",
+                    label="Recall@5",
+                    value=0.7,
+                    unit="ratio",
+                ),
+            ),
+        )
+        report = BenchmarkReport(
+            name="test",
+            memory_system="brv-cli",
+            context_tree_docs=47,
+            query_count=30,
+            duration_ms=5000.0,
+            metrics=(),
+            category_breakdown=(cr,),
+        )
+        assert len(report.category_breakdown) == 1
+        assert report.category_breakdown[0].category == "temporal"

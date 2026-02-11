@@ -104,6 +104,15 @@ class MetricResult:
 
 
 @dataclass(frozen=True)
+class CategoryResult:
+    """Metric results for a single query category."""
+
+    category: str
+    query_count: int
+    metrics: tuple[MetricResult, ...]
+
+
+@dataclass(frozen=True)
 class BenchmarkReport:
     """Full benchmark report."""
 
@@ -113,3 +122,4 @@ class BenchmarkReport:
     query_count: int
     duration_ms: float
     metrics: tuple[MetricResult, ...]
+    category_breakdown: tuple[CategoryResult, ...] = ()

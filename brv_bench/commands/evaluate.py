@@ -11,6 +11,7 @@ from brv_bench.metrics.base import Metric
 from brv_bench.types import (
     BenchmarkDataset,
     BenchmarkReport,
+    CategoryResult,
     GroundTruthEntry,
     QueryExecution,
     SearchResult,
@@ -119,6 +120,35 @@ def compute_metrics(
     return results
 
 
+def compute_category_breakdown(
+    metrics: list[Metric],
+    pairs: list[tuple[QueryExecution, GroundTruthEntry]],
+) -> tuple[CategoryResult, ...]:
+    """Compute metrics grouped by query category.
+
+    Groups pairs by ``entry.category``, runs all metrics on each
+    group independently, and returns one ``CategoryResult`` per
+    category.  Categories are sorted alphabetically for stable
+    ordering across runs and datasets.
+    """
+    groups: dict[str, list[tuple[QueryExecution, GroundTruthEntry]]] = {}
+    for qe, gt in pairs:
+        groups.setdefault(gt.category, []).append((qe, gt))
+
+    breakdown: list[CategoryResult] = []
+    for category in sorted(groups):
+        group_pairs = groups[category]
+        group_metrics = compute_metrics(metrics, group_pairs)
+        breakdown.append(
+            CategoryResult(
+                category=category,
+                query_count=len(group_pairs),
+                metrics=tuple(group_metrics),
+            )
+        )
+    return tuple(breakdown)
+
+
 async def evaluate(
     adapter: RetrievalAdapter,
     dataset: BenchmarkDataset,
@@ -154,6 +184,7 @@ async def evaluate(
         duration_ms = (time.perf_counter() - start) * 1000
 
         metric_results = compute_metrics(metrics, pairs)
+        category_breakdown = compute_category_breakdown(metrics, pairs)
 
         report = BenchmarkReport(
             name=dataset.name,
@@ -162,6 +193,7 @@ async def evaluate(
             query_count=len(dataset.entries),
             duration_ms=duration_ms,
             metrics=tuple(metric_results),
+            category_breakdown=category_breakdown,
         )
 
         if output_path:
@@ -184,14 +216,28 @@ def _save_report(
         "context_tree_docs": report.context_tree_docs,
         "query_count": report.query_count,
         "duration_ms": report.duration_ms,
-        "metrics": {
-            m.name: {
-                "label": m.label,
-                "value": m.value,
-                "unit": m.unit,
+        "metrics": _metrics_to_dict(report.metrics),
+        "category_breakdown": {
+            cr.category: {
+                "query_count": cr.query_count,
+                "metrics": _metrics_to_dict(cr.metrics),
             }
-            for m in report.metrics
+            for cr in report.category_breakdown
         },
         "pairs": [_pair_to_dict(qe, gt) for qe, gt in pairs],
     }
     output_path.write_text(json.dumps(data, indent=2))
+
+
+def _metrics_to_dict(
+    metrics: tuple,
+) -> dict:
+    """Serialize a tuple of MetricResult to a dict keyed by name."""
+    return {
+        m.name: {
+            "label": m.label,
+            "value": m.value,
+            "unit": m.unit,
+        }
+        for m in metrics
+    }

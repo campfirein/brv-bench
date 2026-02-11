@@ -7,6 +7,7 @@ from brv_bench.metrics import (
     F1Score,
     LatencyMetric,
     MeanReciprocalRank,
+    NDCGAtK,
     PrecisionAtK,
     RecallAtK,
     ResultDiversity,
@@ -90,7 +91,8 @@ class TestPrecisionAtK:
             )
         ]
         [result] = PrecisionAtK(2).compute(pairs)
-        assert result.value == 1.0
+        # top-2 = [a.md, b.md], 1 hit / 2 = 0.5
+        assert result.value == 0.5
 
     def test_empty_pairs(self):
         [result] = PrecisionAtK(5).compute([])
@@ -168,6 +170,68 @@ class TestMeanReciprocalRank:
     def test_empty_pairs(self):
         [result] = MeanReciprocalRank().compute([])
         assert result.value == 0.0
+
+
+# ----------------------------------------------------------------
+# NDCG@K
+# ----------------------------------------------------------------
+
+
+class TestNDCGAtK:
+    def test_perfect_ranking(self):
+        # Both relevant docs at positions 0 and 1
+        pairs = [
+            (_qe("q", ["a.md", "b.md", "x.md"]), _gt("q", ["a.md", "b.md"]))
+        ]
+        [result] = NDCGAtK(5).compute(pairs)
+        assert result.value == pytest.approx(1.0)
+
+    def test_zero_ndcg(self):
+        # No relevant docs in results
+        pairs = [(_qe("q", ["x.md", "y.md"]), _gt("q", ["a.md", "b.md"]))]
+        [result] = NDCGAtK(5).compute(pairs)
+        assert result.value == 0.0
+
+    def test_imperfect_ranking(self):
+        # Relevant doc at position 1 instead of 0
+        # DCG  = 0/log2(2) + 1/log2(3) = 1/log2(3)
+        # IDCG = 1/log2(2) = 1.0
+        # NDCG = (1/log2(3)) / 1.0
+        import math
+
+        pairs = [(_qe("q", ["x.md", "a.md"]), _gt("q", ["a.md"]))]
+        [result] = NDCGAtK(5).compute(pairs)
+        assert result.value == pytest.approx(1.0 / math.log2(3))
+
+    def test_k_limits_results(self):
+        # Relevant doc at position 2, but K=2 cuts it off
+        pairs = [(_qe("q", ["x.md", "y.md", "a.md"]), _gt("q", ["a.md"]))]
+        [result] = NDCGAtK(2).compute(pairs)
+        assert result.value == 0.0
+
+    def test_multiple_queries_averaged(self):
+        pairs = [
+            # Perfect: NDCG = 1.0
+            (_qe("q1", ["a.md"]), _gt("q1", ["a.md"])),
+            # Zero: NDCG = 0.0
+            (_qe("q2", ["x.md"]), _gt("q2", ["a.md"])),
+        ]
+        [result] = NDCGAtK(5).compute(pairs)
+        assert result.value == pytest.approx(0.5)
+
+    def test_empty_pairs(self):
+        [result] = NDCGAtK(5).compute([])
+        assert result.value == 0.0
+
+    def test_no_relevant_docs_in_ground_truth(self):
+        # IDCG = 0 → NDCG = 0
+        pairs = [(_qe("q", ["a.md"]), _gt("q", []))]
+        [result] = NDCGAtK(5).compute(pairs)
+        assert result.value == 0.0
+
+    def test_id_includes_k(self):
+        assert NDCGAtK(5).id == "ndcg@5"
+        assert NDCGAtK(10).id == "ndcg@10"
 
 
 # ----------------------------------------------------------------
@@ -447,6 +511,8 @@ class TestDefaultMetrics:
         assert "precision@10" in ids
         assert "recall@5" in ids
         assert "recall@10" in ids
+        assert "ndcg@5" in ids
+        assert "ndcg@10" in ids
         assert "mrr" in ids
         assert "diversity@5" in ids
         assert "cold-latency" in ids
@@ -454,4 +520,4 @@ class TestDefaultMetrics:
         assert "exact-match" in ids
 
     def test_count(self):
-        assert len(default_metrics()) == 9
+        assert len(default_metrics()) == 11

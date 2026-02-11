@@ -8,6 +8,7 @@ from brv_bench.metrics.exact_match import ExactMatch
 from brv_bench.metrics.f1 import F1Score
 from brv_bench.metrics.latency import LatencyMetric
 from brv_bench.metrics.mrr import MeanReciprocalRank
+from brv_bench.metrics.ndcg import NDCGAtK
 from brv_bench.metrics.precision import PrecisionAtK
 from brv_bench.metrics.recall import RecallAtK
 
@@ -19,6 +20,7 @@ __all__ = [
     "LatencyMetric",
     "MeanReciprocalRank",
     "Metric",
+    "NDCGAtK",
     "PrecisionAtK",
     "RecallAtK",
     "ResultDiversity",
@@ -36,6 +38,8 @@ def default_metrics() -> list[Metric]:
         PrecisionAtK(10),
         RecallAtK(5),
         RecallAtK(10),
+        NDCGAtK(5),
+        NDCGAtK(10),
         MeanReciprocalRank(),
         ResultDiversity(5),
         LatencyMetric("Cold Latency", "cold-latency"),

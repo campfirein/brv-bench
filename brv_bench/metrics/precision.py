@@ -21,7 +21,10 @@ class PrecisionAtK(Metric):
         if not pairs:
             return [
                 MetricResult(
-                    name=self.id, label=f"Precision@{self._k}", value=0.0, unit="ratio"
+                    name=self.id,
+                    label=f"Precision@{self._k}",
+                    value=0.0,
+                    unit="ratio",
                 )
             ]
 
@@ -30,12 +33,15 @@ class PrecisionAtK(Metric):
             top_k = execution.results[: self._k]
             relevant = set(truth.expected_doc_ids)
             hits = sum(1 for r in top_k if r.path in relevant)
-            denominator = min(self._k, max(len(relevant), 1))
+            denominator = max(min(self._k, len(top_k)), 1)
             values.append(hits / denominator)
 
         mean = sum(values) / len(values)
         return [
             MetricResult(
-                name=self.id, label=f"Precision@{self._k}", value=mean, unit="ratio"
+                name=self.id,
+                label=f"Precision@{self._k}",
+                value=mean,
+                unit="ratio",
             )
         ]
