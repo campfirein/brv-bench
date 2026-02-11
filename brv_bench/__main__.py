@@ -163,6 +163,7 @@ async def main(argv: list[str] | None = None) -> int:
     elif args.command == "evaluate":
         dataset = load_dataset(args.ground_truth)
         metrics = default_metrics()
+        prompt_config = get_prompt_config(dataset.name)
 
         if args.judge:
             from brv_bench.metrics._judge.client import (
@@ -176,12 +177,11 @@ async def main(argv: list[str] | None = None) -> int:
             )
             judge_metric = LLMJudge(
                 client=client,
+                prompt_template=prompt_config.judge_template,
                 concurrency=args.judge_concurrency,
                 cache_path=args.judge_cache,
             )
             metrics.append(judge_metric)
-
-        prompt_config = get_prompt_config(dataset.name)
 
         adapter = BrvCliAdapter(prompt_config=prompt_config)
 
