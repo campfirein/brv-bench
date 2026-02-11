@@ -3,10 +3,14 @@
 import os
 from pathlib import Path
 
+from brv_bench.metrics import primary_metrics
 from brv_bench.types import BenchmarkReport, MetricResult
 
 # Metrics displayed as decimal (0.xx) rather than percentage
-_DECIMAL_METRICS = {"mrr", "ndcg", "diversity"}
+_DECIMAL_METRICS = {"mrr", "ndcg", "diversity", "llm-judge"}
+
+# Primary metric IDs derived from the registry (not hardcoded)
+_PRIMARY_IDS: set[str] = {m.id for m in primary_metrics()}
 
 
 def _format_value(m: MetricResult) -> str:
@@ -70,13 +74,22 @@ def format_report(report: BenchmarkReport) -> str:
     lines.append(f"  {'Queries:':<15}{report.query_count}")
     lines.append(THIN)
 
-    # --- Overall quality metrics ---
-    quality_rows = _format_quality_section(report.metrics)
-    if quality_rows:
+    # --- Split quality metrics into primary / diagnostic ---
+    quality = [m for m in report.metrics if m.percentiles is None]
+    primary = [m for m in quality if m.name in _PRIMARY_IDS]
+    diagnostic = [m for m in quality if m.name not in _PRIMARY_IDS]
+
+    if primary:
         lines.append("")
-        lines.append("  Quality Metrics (Overall):")
+        lines.append("  Primary Metrics:")
         lines.append("  " + "-" * 40)
-        lines.extend(quality_rows)
+        lines.extend(_format_quality_section(primary))
+
+    if diagnostic:
+        lines.append("")
+        lines.append("  Diagnostic Metrics:")
+        lines.append("  " + "-" * 40)
+        lines.extend(_format_quality_section(diagnostic))
 
     # Latency metrics
     lines.extend(_format_latency_section(report.metrics))
@@ -90,8 +103,15 @@ def format_report(report: BenchmarkReport) -> str:
         for cr in report.category_breakdown:
             lines.append("")
             lines.append(f"  {cr.category} ({cr.query_count} queries):")
-            lines.append("  " + "-" * 40)
-            lines.extend(_format_quality_section(cr.metrics))
+            cat_quality = [m for m in cr.metrics if m.percentiles is None]
+            cat_primary = [m for m in cat_quality if m.name in _PRIMARY_IDS]
+            cat_diag = [m for m in cat_quality if m.name not in _PRIMARY_IDS]
+            if cat_primary:
+                lines.append("  " + "-" * 40)
+                lines.extend(_format_quality_section(cat_primary))
+            if cat_diag:
+                lines.append("  " + "-" * 28)
+                lines.extend(_format_quality_section(cat_diag))
 
     lines.append(SEP)
     return "\n".join(lines)

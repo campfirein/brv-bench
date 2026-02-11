@@ -27,14 +27,16 @@ __all__ = [
     "RecallAtK",
     "ResultDiversity",
     "default_metrics",
+    "diagnostic_metrics",
+    "primary_metrics",
 ]
 
 
 # =============================================================================
 
 
-def default_metrics() -> list[Metric]:
-    """Return the default P0 metric set."""
+def primary_metrics() -> list[Metric]:
+    """Return primary retrieval quality metrics (headline numbers)."""
     return [
         PrecisionAtK(5),
         PrecisionAtK(10),
@@ -43,8 +45,19 @@ def default_metrics() -> list[Metric]:
         NDCGAtK(5),
         NDCGAtK(10),
         MeanReciprocalRank(),
+    ]
+
+
+def diagnostic_metrics() -> list[Metric]:
+    """Return diagnostic metrics (answer quality, diversity, latency)."""
+    return [
         ResultDiversity(5),
         LatencyMetric("Cold Latency", "cold-latency"),
         F1Score(),
         ExactMatch(),
     ]
+
+
+def default_metrics() -> list[Metric]:
+    """Return all metrics (primary + diagnostic)."""
+    return primary_metrics() + diagnostic_metrics()

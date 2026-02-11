@@ -429,6 +429,45 @@ class TestConcurrency:
 
 
 # ----------------------------------------------------------------
+# get_verdict
+# ----------------------------------------------------------------
+
+
+class TestGetVerdict:
+    def test_returns_verdict_after_compute(self):
+        client = MockJudgeClient(verdicts={"q1": True, "q2": False})
+        metric = LLMJudge(client=client)
+        pairs = [
+            (_qe("q1", answer="Paris"), _gt("q1", expected_answer="Paris")),
+            (_qe("q2", answer="London"), _gt("q2", expected_answer="Berlin")),
+        ]
+        metric.compute(pairs)
+
+        v1 = metric.get_verdict("q1")
+        assert v1 is not None
+        assert v1.is_correct is True
+
+        v2 = metric.get_verdict("q2")
+        assert v2 is not None
+        assert v2.is_correct is False
+
+    def test_returns_none_for_unknown_query(self):
+        client = MockJudgeClient(default=True)
+        metric = LLMJudge(client=client)
+        pairs = [
+            (_qe("q1", answer="Paris"), _gt("q1", expected_answer="Paris")),
+        ]
+        metric.compute(pairs)
+
+        assert metric.get_verdict("unknown_query") is None
+
+    def test_returns_none_before_compute(self):
+        client = MockJudgeClient(default=True)
+        metric = LLMJudge(client=client)
+        assert metric.get_verdict("q1") is None
+
+
+# ----------------------------------------------------------------
 # create_judge_client factory
 # ----------------------------------------------------------------
 
