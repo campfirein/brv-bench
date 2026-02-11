@@ -7,17 +7,18 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# Import dataset modules so they self-register their PromptConfigs.
+import brv_bench.datasets.locomo  # noqa: F401
 from brv_bench.adapters.brv_cli import BrvCliAdapter
 from brv_bench.commands.curate import curate
 from brv_bench.commands.evaluate import evaluate
-from brv_bench.datasets.locomo import PROMPT_CONFIG as LOCOMO_PROMPT_CONFIG
+from brv_bench.datasets import get_prompt_config
 from brv_bench.metrics import default_metrics
 from brv_bench.reporting.terminal import format_report, save_summary
 from brv_bench.types import (
     BenchmarkDataset,
     CorpusDocument,
     GroundTruthEntry,
-    PromptConfig,
 )
 
 # =============================================================================
@@ -108,29 +109,13 @@ def load_dataset(path: Path) -> BenchmarkDataset:
     return BenchmarkDataset(name=data["name"], corpus=corpus, entries=entries)
 
 
-DATASET_PROMPT_CONFIGS: dict[str, PromptConfig] = {
-    "locomo": LOCOMO_PROMPT_CONFIG,
-}
-
-
-def _resolve_prompt_config(dataset_name: str) -> PromptConfig:
-    """Look up the prompt config for a dataset by name."""
-    config = DATASET_PROMPT_CONFIGS.get(dataset_name)
-    if config is None:
-        raise ValueError(
-            f"No prompt config for dataset '{dataset_name}'. "
-            f"Known datasets: {', '.join(DATASET_PROMPT_CONFIGS)}"
-        )
-    return config
-
-
 async def main(argv: list[str] | None = None) -> int:
     """Main entry point."""
     args = parse_args(argv)
 
     if args.command == "curate":
         dataset = load_dataset(args.ground_truth)
-        prompt_config = _resolve_prompt_config(dataset.name)
+        prompt_config = get_prompt_config(dataset.name)
         summary = await curate(dataset.corpus, prompt_config)
         print(f"Curated {summary.succeeded}/{summary.total} documents.")
         if summary.failed > 0:
@@ -146,7 +131,7 @@ async def main(argv: list[str] | None = None) -> int:
     elif args.command == "evaluate":
         dataset = load_dataset(args.ground_truth)
         metrics = default_metrics()
-        prompt_config = _resolve_prompt_config(dataset.name)
+        prompt_config = get_prompt_config(dataset.name)
 
         adapter = BrvCliAdapter(prompt_config=prompt_config)
 
