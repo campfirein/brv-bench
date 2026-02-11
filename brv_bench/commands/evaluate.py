@@ -13,6 +13,7 @@ from brv_bench.types import (
     BenchmarkReport,
     GroundTruthEntry,
     QueryExecution,
+    SearchResult,
 )
 
 
@@ -58,10 +59,20 @@ async def run_queries(
             # Reconstruct pairs from saved data (for metric computation)
             for saved in existing:
                 gt = entries[len(pairs)]
+                saved_doc_ids = saved.get("result_doc_ids", [])
+                results = tuple(
+                    SearchResult(
+                        path=doc_id,
+                        title="",
+                        score=0.0,
+                        excerpt="",
+                    )
+                    for doc_id in saved_doc_ids
+                )
                 qe = QueryExecution(
                     query=saved["query"],
-                    results=tuple(),
-                    total_found=len(saved.get("result_doc_ids", [])),
+                    results=results,
+                    total_found=len(saved_doc_ids),
                     duration_ms=saved["duration_ms"],
                     answer=saved.get("answer"),
                 )

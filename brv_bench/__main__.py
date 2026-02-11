@@ -162,7 +162,10 @@ async def main(argv: list[str] | None = None) -> int:
         print(f"Duration: {report.duration_ms:.1f}ms")
         print()
         for m in report.metrics:
-            print(f"  {m.label}: {m.value:.4f} {m.unit}")
+            if m.unit == "ratio":
+                print(f"  {m.label}: {m.value:.2%}")
+            else:
+                print(f"  {m.label}: {m.value:.2f} {m.unit}")
 
         if args.output:
             print(f"\nResults saved to {args.output}")

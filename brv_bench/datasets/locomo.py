@@ -305,9 +305,10 @@ Rules:
     ANSWER: beach, mountains, forest
     SOURCES: conv-26_s4, conv-26_s6, conv-26_s8
 
+- Note: Again, just two two-part answer: ANSWER and SOURCES. No summary or further discussion.
 ## Now answer this question
 
-Question: {question}\
+- Question: {question}\
 """
 
 PROMPT_CONFIG = PromptConfig(

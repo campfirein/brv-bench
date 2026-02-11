@@ -10,7 +10,7 @@ _stemmer = PorterStemmer()
 
 def normalize_answer(text: str) -> str:
     """Lowercase, strip articles/punctuation, collapse whitespace."""
-    text = text.lower()
+    text = str(text).lower()
     # remove punctuation
     text = text.translate(str.maketrans("", "", string.punctuation))
     # remove articles

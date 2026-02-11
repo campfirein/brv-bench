@@ -59,15 +59,15 @@ Corpus docs: 272
 Queries: 1982
 Duration: 125000.0ms
 
-  Precision@5: 0.6800 ratio
-  Precision@10: 0.7150 ratio
-  Recall@5: 0.6800 ratio
-  Recall@10: 0.8520 ratio
-  MRR: 0.7600 ratio
-  Diversity@5: 0.8900 ratio
-  Cold Latency: 1200.0000 ms
-  F1 Score: 0.4500 ratio
-  Exact Match: 0.2100 ratio
+  Precision@5: 68.00%
+  Precision@10: 71.50%
+  Recall@5: 68.00%
+  Recall@10: 85.20%
+  MRR: 76.00%
+  Diversity@5: 89.00%
+  Cold Latency: 1200.00 ms
+  F1 Score: 45.00%
+  Exact Match: 21.00%
 
 Results saved to output/results.json
 ```
