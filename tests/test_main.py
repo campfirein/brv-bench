@@ -18,9 +18,9 @@ from brv_bench.types import BenchmarkDataset
 
 class TestParseArgs:
     def test_curate_command(self):
-        args = parse_args(["curate", "--source", "/some/path"])
+        args = parse_args(["curate", "--ground-truth", "/some/path.json"])
         assert args.command == "curate"
-        assert args.source == Path("/some/path")
+        assert args.ground_truth == Path("/some/path.json")
 
     def test_evaluate_command(self):
         args = parse_args(
@@ -46,7 +46,7 @@ class TestParseArgs:
         with pytest.raises(SystemExit):
             parse_args([])
 
-    def test_curate_missing_source_fails(self):
+    def test_curate_missing_ground_truth_fails(self):
         with pytest.raises(SystemExit):
             parse_args(["curate"])
 
@@ -138,11 +138,32 @@ class TestLoadDataset:
 # ----------------------------------------------------------------
 
 
+def _locomo_dataset(tmp_path: Path) -> Path:
+    """Write a minimal locomo dataset and return its path."""
+    gt_file = tmp_path / "dataset.json"
+    gt_data = {
+        "name": "locomo",
+        "corpus": [
+            {
+                "doc_id": "conv-26_s1",
+                "content": "hello",
+                "source": "session_1",
+            },
+        ],
+        "entries": [
+            {
+                "query": "q",
+                "expected_doc_ids": ["conv-26_s1"],
+            },
+        ],
+    }
+    gt_file.write_text(json.dumps(gt_data))
+    return gt_file
+
+
 class TestMain:
     def test_curate_success(self, tmp_path: Path):
-        source = tmp_path / "source"
-        source.mkdir()
-        (source / "a.md").write_text("content")
+        gt_file = _locomo_dataset(tmp_path)
 
         mock_proc = AsyncMock()
         mock_proc.returncode = 0
@@ -154,7 +175,7 @@ class TestMain:
             return_value=mock_proc,
         ):
             code = asyncio.run(
-                main(["curate", "--source", str(source)])
+                main(["curate", "--ground-truth", str(gt_file)])
             )
 
         assert code == 0
@@ -162,9 +183,7 @@ class TestMain:
     def test_curate_with_failures_returns_1(
         self, tmp_path: Path
     ):
-        source = tmp_path / "source"
-        source.mkdir()
-        (source / "a.md").write_text("content")
+        gt_file = _locomo_dataset(tmp_path)
 
         mock_proc = AsyncMock()
         mock_proc.returncode = 1
@@ -176,34 +195,34 @@ class TestMain:
             return_value=mock_proc,
         ):
             code = asyncio.run(
-                main(["curate", "--source", str(source)])
+                main(["curate", "--ground-truth", str(gt_file)])
             )
 
         assert code == 1
 
-    def test_evaluate_no_adapter_returns_1(
+    def test_evaluate_runs_pipeline(
         self, tmp_path: Path
     ):
-        gt_file = tmp_path / "dataset.json"
-        gt_data = {
-            "name": "test",
-            "corpus": [],
-            "entries": [
-                {
-                    "query": "q",
-                    "expected_doc_ids": ["a.md"],
-                },
-            ],
-        }
-        gt_file.write_text(json.dumps(gt_data))
+        gt_file = _locomo_dataset(tmp_path)
 
-        code = asyncio.run(
-            main(
-                [
-                    "evaluate",
-                    "--ground-truth",
-                    str(gt_file),
-                ]
-            )
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate.return_value = (
+            b'{"command":"query","data":{"result":"ANSWER: x\\nSOURCES: conv-26_s1","status":"completed"},"success":true}',
+            b"",
         )
-        assert code == 1
+        with patch(
+            "brv_bench.adapters.brv_cli"
+            ".asyncio.create_subprocess_exec",
+            return_value=mock_proc,
+        ):
+            code = asyncio.run(
+                main(
+                    [
+                        "evaluate",
+                        "--ground-truth",
+                        str(gt_file),
+                    ]
+                )
+            )
+        assert code == 0

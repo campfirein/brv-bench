@@ -6,9 +6,12 @@ import json
 import sys
 from pathlib import Path
 
+from brv_bench.adapters.brv_cli import BrvCliAdapter
 from brv_bench.commands.curate import curate
+from brv_bench.commands.evaluate import evaluate
+from brv_bench.datasets.locomo import PROMPT_CONFIG as LOCOMO_PROMPT_CONFIG
 from brv_bench.metrics import default_metrics
-from brv_bench.types import BenchmarkDataset, CorpusDocument, GroundTruthEntry
+from brv_bench.types import BenchmarkDataset, CorpusDocument, GroundTruthEntry, PromptConfig
 
 # =============================================================================
 
@@ -29,13 +32,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     # --- curate ---
     curate_parser = subparsers.add_parser(
         "curate",
-        help="Populate context tree from source files.",
+        help="Populate context tree from a benchmark dataset.",
     )
     curate_parser.add_argument(
-        "--source",
+        "--ground-truth",
         type=Path,
         required=True,
-        help="Directory containing source files to curate.",
+        help="Path to benchmark dataset JSON file.",
     )
 
     # --- evaluate ---
@@ -54,6 +57,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=int,
         default=10,
         help="Max results per query (default: 10).",
+    )
+    eval_parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Path to save results JSON (incremental + final).",
     )
 
     return parser.parse_args(argv)
@@ -97,38 +106,68 @@ def load_dataset(path: Path) -> BenchmarkDataset:
     )
 
 
+DATASET_PROMPT_CONFIGS: dict[str, PromptConfig] = {
+    "locomo": LOCOMO_PROMPT_CONFIG,
+}
+
+
+def _resolve_prompt_config(dataset_name: str) -> PromptConfig:
+    """Look up the prompt config for a dataset by name."""
+    config = DATASET_PROMPT_CONFIGS.get(dataset_name)
+    if config is None:
+        raise ValueError(
+            f"No prompt config for dataset '{dataset_name}'. "
+            f"Known datasets: {', '.join(DATASET_PROMPT_CONFIGS)}"
+        )
+    return config
+
+
 async def main(argv: list[str] | None = None) -> int:
     """Main entry point."""
     args = parse_args(argv)
 
     if args.command == "curate":
-        summary = await curate(args.source)
+        dataset = load_dataset(args.ground_truth)
+        prompt_config = _resolve_prompt_config(dataset.name)
+        summary = await curate(dataset.corpus, prompt_config)
         print(
             f"Curated {summary.succeeded}/{summary.total}"
-            " files."
+            " documents."
         )
         if summary.failed > 0:
             for r in summary.results:
                 if not r.success:
                     print(
-                        f"  FAILED: {r.file} — {r.message}",
+                        f"  FAILED: {r.doc_id} — {r.message}",
                         file=sys.stderr,
                     )
             return 1
         return 0
 
     elif args.command == "evaluate":
-        _dataset = load_dataset(args.ground_truth)
-        _metrics = default_metrics()
+        dataset = load_dataset(args.ground_truth)
+        metrics = default_metrics()
+        prompt_config = _resolve_prompt_config(dataset.name)
 
-        # Adapter will be resolved here once BrvCliAdapter
-        # is implemented (B3).
-        print(
-            "Error: No adapter configured. "
-            "BrvCliAdapter implementation is pending (B3).",
-            file=sys.stderr,
+        adapter = BrvCliAdapter(prompt_config=prompt_config)
+
+        report = await evaluate(
+            adapter, dataset, metrics,
+            limit=args.limit, output_path=args.output,
         )
-        return 1
+
+        print(f"Benchmark: {report.name}")
+        print(f"Corpus docs: {report.context_tree_docs}")
+        print(f"Queries: {report.query_count}")
+        print(f"Duration: {report.duration_ms:.1f}ms")
+        print()
+        for m in report.metrics:
+            print(f"  {m.label}: {m.value:.4f} {m.unit}")
+
+        if args.output:
+            print(f"\nResults saved to {args.output}")
+
+        return 0
 
     return 0
 

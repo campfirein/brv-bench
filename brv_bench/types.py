@@ -40,6 +40,19 @@ class BenchmarkDataset:
 
 
 # =============================================================================
+# Adapter types
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class PromptConfig:
+    """Dataset-specific prompt templates for the BRV adapter."""
+
+    curate_template: str
+    query_template: str
+
+
+# =============================================================================
 # Retrieval types
 # =============================================================================
 
