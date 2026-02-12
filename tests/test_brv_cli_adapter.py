@@ -176,6 +176,20 @@ class TestParseQueryResponse:
         assert answer == "not json"
         assert ids == []
 
+    def test_sources_none_returns_empty_list(self):
+        raw = _query_json(
+            "I don't have enough information to answer this question.",
+            "none",
+        )
+        answer, ids = BrvCliAdapter._parse_query_response(raw)
+        assert answer == "I don't have enough information to answer this question."
+        assert ids == []
+
+    def test_sources_none_case_insensitive(self):
+        raw = _query_json("No info", "None")
+        _, ids = BrvCliAdapter._parse_query_response(raw)
+        assert ids == []
+
     def test_missing_answer_line_uses_full_result(self):
         raw = json.dumps({
             "command": "query",

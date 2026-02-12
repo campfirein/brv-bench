@@ -138,11 +138,14 @@ class BrvCliAdapter(RetrievalAdapter):
         )
         if sources_match:
             raw_sources = sources_match.group(1).strip()
-            doc_ids = [
-                s.strip()
-                for s in raw_sources.split(",")
-                if s.strip()
-            ]
+            if raw_sources.lower() == "none":
+                doc_ids = []
+            else:
+                doc_ids = [
+                    s.strip()
+                    for s in raw_sources.split(",")
+                    if s.strip()
+                ]
 
         if not answer:
             answer = result_text
