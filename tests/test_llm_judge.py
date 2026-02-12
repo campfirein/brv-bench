@@ -562,7 +562,7 @@ class TestAnthropicJudgeClient:
 
         mock_async_client.messages.create.assert_called_once_with(
             model="claude-sonnet-4-5-20250929",
-            max_tokens=512,
+            max_tokens=1024,
             temperature=0.0,
             messages=[{"role": "user", "content": "judge this"}],
         )
@@ -634,7 +634,7 @@ class TestOpenAIJudgeClient:
 
         mock_async_client.chat.completions.create.assert_called_once_with(
             model="gpt-4o-2024-08-06",
-            max_tokens=512,
+            max_tokens=1024,
             temperature=0.0,
             messages=[{"role": "user", "content": "judge this"}],
         )
@@ -709,7 +709,7 @@ class TestGeminiJudgeClient:
             contents="judge this",
             config={
                 "temperature": 0.0,
-                "max_output_tokens": 512,
+                "max_output_tokens": 1024,
             },
         )
         assert verdict.is_correct is True
