@@ -12,6 +12,8 @@ from brv_bench.metrics import (
     RecallAtK,
     ResultDiversity,
     default_metrics,
+    diagnostic_metrics,
+    primary_metrics,
 )
 from brv_bench.types import (
     GroundTruthEntry,
@@ -521,3 +523,41 @@ class TestDefaultMetrics:
 
     def test_count(self):
         assert len(default_metrics()) == 11
+
+
+class TestPrimaryMetrics:
+    def test_contains_retrieval_quality_metrics(self):
+        ids = {m.id for m in primary_metrics()}
+        assert "precision@5" in ids
+        assert "precision@10" in ids
+        assert "recall@5" in ids
+        assert "recall@10" in ids
+        assert "ndcg@5" in ids
+        assert "ndcg@10" in ids
+        assert "mrr" in ids
+
+    def test_count(self):
+        assert len(primary_metrics()) == 7
+
+    def test_no_diagnostic_ids(self):
+        primary_ids = {m.id for m in primary_metrics()}
+        diag_ids = {m.id for m in diagnostic_metrics()}
+        assert primary_ids.isdisjoint(diag_ids)
+
+
+class TestDiagnosticMetrics:
+    def test_contains_answer_and_diversity_metrics(self):
+        ids = {m.id for m in diagnostic_metrics()}
+        assert "diversity@5" in ids
+        assert "cold-latency" in ids
+        assert "f1" in ids
+        assert "exact-match" in ids
+
+    def test_count(self):
+        assert len(diagnostic_metrics()) == 4
+
+    def test_default_is_primary_plus_diagnostic(self):
+        default_ids = [m.id for m in default_metrics()]
+        primary_ids = [m.id for m in primary_metrics()]
+        diag_ids = [m.id for m in diagnostic_metrics()]
+        assert default_ids == primary_ids + diag_ids

@@ -115,6 +115,7 @@ class LLMJudge(Metric):
         self._prompt_template = prompt_template or DEFAULT_JUDGE_PROMPT
         self._concurrency = concurrency
         self._cache_path = cache_path
+        self._last_verdicts: dict[str, JudgeVerdict] = {}
 
     @property
     def id(self) -> str:
@@ -161,6 +162,12 @@ class LLMJudge(Metric):
             if self._cache_path is not None:
                 _save_cache(self._cache_path, cached)
 
+        # Store verdicts keyed by query for report enrichment.
+        self._last_verdicts = {}
+        for idx, (qe, gt) in enumerate(scorable):
+            key = cache_keys[idx]
+            self._last_verdicts[gt.query] = cached[key]
+
         # Aggregate scores.
         scores: list[float] = []
         for idx in range(len(scorable)):
@@ -177,6 +184,10 @@ class LLMJudge(Metric):
                 unit="ratio",
             )
         ]
+
+    def get_verdict(self, query: str) -> JudgeVerdict | None:
+        """Return the verdict for *query* from the last ``compute()`` call."""
+        return self._last_verdicts.get(query)
 
     # ── Async judging ────────────────────────────────────────────
 

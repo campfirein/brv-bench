@@ -21,9 +21,10 @@ from brv_bench.types import (
 def _pair_to_dict(
     execution: QueryExecution,
     entry: GroundTruthEntry,
+    verdict: object | None = None,
 ) -> dict:
     """Serialize a single (execution, ground_truth) pair."""
-    return {
+    d: dict = {
         "query": entry.query,
         "category": entry.category,
         "expected_doc_ids": list(entry.expected_doc_ids),
@@ -32,6 +33,12 @@ def _pair_to_dict(
         "result_doc_ids": [r.path for r in execution.results],
         "duration_ms": execution.duration_ms,
     }
+    if verdict is not None:
+        d["judge_verdict"] = {
+            "is_correct": verdict.is_correct,
+            "reasoning": verdict.reasoning,
+        }
+    return d
 
 
 async def run_queries(
@@ -197,7 +204,7 @@ async def evaluate(
         )
 
         if output_path:
-            _save_report(output_path, report, pairs)
+            _save_report(output_path, report, pairs, metrics)
 
         return report
     finally:
@@ -208,8 +215,21 @@ def _save_report(
     output_path: Path,
     report: BenchmarkReport,
     pairs: list[tuple[QueryExecution, GroundTruthEntry]],
+    metrics: list[Metric] | None = None,
 ) -> None:
     """Save the final report with metrics and per-query results."""
+    # Find LLMJudge in the metrics list (if present) for verdict data.
+    judge = None
+    if metrics:
+        from brv_bench.metrics.llm_judge import LLMJudge
+
+        judge = next((m for m in metrics if isinstance(m, LLMJudge)), None)
+
+    pair_dicts = []
+    for qe, gt in pairs:
+        verdict = judge.get_verdict(gt.query) if judge else None
+        pair_dicts.append(_pair_to_dict(qe, gt, verdict))
+
     data = {
         "status": "completed",
         "benchmark": report.name,
@@ -224,7 +244,7 @@ def _save_report(
             }
             for cr in report.category_breakdown
         },
-        "pairs": [_pair_to_dict(qe, gt) for qe, gt in pairs],
+        "pairs": pair_dicts,
     }
     output_path.write_text(json.dumps(data, indent=2))
 
