@@ -74,6 +74,12 @@ class MockJudgeClient(JudgeClient):
         self._verdicts = verdicts or {}
         self._default = default
         self.calls: list[str] = []
+        self.raw_calls: list[str] = []
+
+    async def raw_call(self, prompt: str, *, max_tokens: int = 512) -> str:
+        self.raw_calls.append(prompt)
+        # Return a JSON verdict for compatibility with judge()
+        return '{"reasoning": "mock", "verdict": "correct"}'
 
     async def judge(self, query: str, prompt: str) -> JudgeVerdict:
         self.calls.append(query)
@@ -451,6 +457,33 @@ class TestGetVerdict:
         assert v2 is not None
         assert v2.is_correct is False
 
+    def test_verdicts_accumulate_across_compute_calls(self):
+        """Verdicts from earlier compute() calls must survive later ones.
+
+        This prevents category-breakdown from clobbering the overall
+        verdicts used for per-pair reporting.
+        """
+        client = MockJudgeClient(verdicts={"q1": True, "q2": False})
+        metric = LLMJudge(client=client)
+
+        # First compute with q1
+        pairs_1 = [
+            (_qe("q1", answer="Paris"), _gt("q1", expected_answer="Paris")),
+        ]
+        metric.compute(pairs_1)
+
+        # Second compute with q2 (simulates category breakdown)
+        pairs_2 = [
+            (_qe("q2", answer="London"), _gt("q2", expected_answer="Berlin")),
+        ]
+        metric.compute(pairs_2)
+
+        # Both verdicts should be accessible
+        assert metric.get_verdict("q1") is not None
+        assert metric.get_verdict("q1").is_correct is True
+        assert metric.get_verdict("q2") is not None
+        assert metric.get_verdict("q2").is_correct is False
+
     def test_returns_none_for_unknown_query(self):
         client = MockJudgeClient(default=True)
         metric = LLMJudge(client=client)
@@ -529,12 +562,37 @@ class TestAnthropicJudgeClient:
 
         mock_async_client.messages.create.assert_called_once_with(
             model="claude-sonnet-4-5-20250929",
-            max_tokens=256,
+            max_tokens=512,
             temperature=0.0,
             messages=[{"role": "user", "content": "judge this"}],
         )
         assert verdict.is_correct is True
         assert verdict.query == "q1"
+
+    def test_raw_call(self, monkeypatch: pytest.MonkeyPatch):
+        mock_mod = MagicMock()
+        mock_async_client = MagicMock()
+        mock_mod.AsyncAnthropic.return_value = mock_async_client
+
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="raw response text")]
+        mock_async_client.messages.create = AsyncMock(
+            return_value=mock_response
+        )
+
+        with patch.dict("sys.modules", {"anthropic": mock_mod}):
+            client = AnthropicJudgeClient(api_key="test-key")
+
+        import asyncio
+
+        result = asyncio.run(client.raw_call("test prompt", max_tokens=100))
+        assert result == "raw response text"
+        mock_async_client.messages.create.assert_called_once_with(
+            model="claude-sonnet-4-5-20250929",
+            max_tokens=100,
+            temperature=0.0,
+            messages=[{"role": "user", "content": "test prompt"}],
+        )
 
 
 # ----------------------------------------------------------------
@@ -576,12 +634,33 @@ class TestOpenAIJudgeClient:
 
         mock_async_client.chat.completions.create.assert_called_once_with(
             model="gpt-4o-2024-08-06",
-            max_tokens=256,
+            max_tokens=512,
             temperature=0.0,
             messages=[{"role": "user", "content": "judge this"}],
         )
         assert verdict.is_correct is False
         assert verdict.query == "q1"
+
+    def test_raw_call(self, monkeypatch: pytest.MonkeyPatch):
+        mock_mod = MagicMock()
+        mock_async_client = MagicMock()
+        mock_mod.AsyncOpenAI.return_value = mock_async_client
+
+        mock_response = MagicMock()
+        mock_response.choices = [
+            MagicMock(message=MagicMock(content="raw openai text"))
+        ]
+        mock_async_client.chat.completions.create = AsyncMock(
+            return_value=mock_response
+        )
+
+        with patch.dict("sys.modules", {"openai": mock_mod}):
+            client = OpenAIJudgeClient(api_key="test-key")
+
+        import asyncio
+
+        result = asyncio.run(client.raw_call("test prompt"))
+        assert result == "raw openai text"
 
 
 # ----------------------------------------------------------------
@@ -630,11 +709,43 @@ class TestGeminiJudgeClient:
             contents="judge this",
             config={
                 "temperature": 0.0,
-                "max_output_tokens": 256,
+                "max_output_tokens": 512,
             },
         )
         assert verdict.is_correct is True
         assert verdict.query == "q1"
+
+    def test_raw_call(self, monkeypatch: pytest.MonkeyPatch):
+        mock_google = MagicMock()
+        mock_genai = MagicMock()
+        mock_google.genai = mock_genai
+        mock_client_instance = MagicMock()
+        mock_genai.Client.return_value = mock_client_instance
+
+        mock_response = MagicMock()
+        mock_response.text = "raw gemini text"
+        mock_client_instance.aio.models.generate_content = AsyncMock(
+            return_value=mock_response,
+        )
+
+        with patch.dict(
+            "sys.modules",
+            {"google": mock_google, "google.genai": mock_genai},
+        ):
+            client = GeminiJudgeClient(api_key="test-key")
+
+        import asyncio
+
+        result = asyncio.run(client.raw_call("test prompt", max_tokens=100))
+        assert result == "raw gemini text"
+        mock_client_instance.aio.models.generate_content.assert_called_once_with(
+            model="gemini-2.5-flash",
+            contents="test prompt",
+            config={
+                "temperature": 0.0,
+                "max_output_tokens": 100,
+            },
+        )
 
 
 # ----------------------------------------------------------------

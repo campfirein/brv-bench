@@ -103,6 +103,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Path to JSON file for caching judge verdicts.",
     )
 
+    # Answer justifier options
+    eval_parser.add_argument(
+        "--justifier-backend",
+        choices=["anthropic", "gemini", "openai"],
+        default="gemini",
+        help="LLM backend for the answer justifier (default: gemini).",
+    )
+    eval_parser.add_argument(
+        "--justifier-model",
+        type=str,
+        default=None,
+        help="Model name for the justifier (default: backend-specific).",
+    )
+    eval_parser.add_argument(
+        "--justifier-concurrency",
+        type=int,
+        default=5,
+        help="Max parallel justifier API calls (default: 5).",
+    )
+
     return parser.parse_args(argv)
 
 
@@ -184,7 +204,26 @@ async def main(argv: list[str] | None = None) -> int:
             )
             metrics.append(judge_metric)
 
-        adapter = BrvCliAdapter(prompt_config=prompt_config)
+        justifier = None
+        if prompt_config.justifier_template:
+            from brv_bench.adapters.justifier import AnswerJustifier
+            from brv_bench.metrics._judge.client import (
+                create_judge_client as _create_client,
+            )
+
+            justifier_client = _create_client(
+                backend=args.justifier_backend,
+                model=args.justifier_model,
+            )
+            justifier = AnswerJustifier(
+                client=justifier_client,
+                prompt_template=prompt_config.justifier_template,
+            )
+
+        adapter = BrvCliAdapter(
+            prompt_config=prompt_config,
+            justifier=justifier,
+        )
 
         output_path = args.output
         if output_path is None:

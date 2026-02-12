@@ -119,6 +119,20 @@ The `--judge-cache` flag saves verdicts to a JSON file so re-runs don't repeat A
 | `--judge-concurrency` | `5` | Max parallel judge API calls |
 | `--judge-cache` | none | Path to JSON cache file for verdicts |
 
+### 4. Answer Justifier
+
+`brv query` performs direct search and returns raw context-tree content (key facts) — it does not synthesise answers. The **Answer Justifier** is an external LLM call that takes the retrieved context + question and produces a concise answer for F1/EM/LLM-Judge metrics.
+
+The justifier is **automatically enabled** for datasets that define a `justifier_template` (both LoCoMo and LongMemEval do). It uses the same API key as the judge.
+
+#### Justifier Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--justifier-backend` | `gemini` | LLM backend: `gemini`, `anthropic`, or `openai` |
+| `--justifier-model` | backend default | Model name override |
+| `--justifier-concurrency` | `5` | Reserved for future parallel queries |
+
 ### Example output
 
 ```
@@ -163,15 +177,15 @@ Summary saved to report/20260211_locomo_brv-cli.txt
   "name": "locomo",
   "corpus": [
     {
-      "doc_id": "conv-26_s1",
+      "doc_id": "session_1",
       "content": "Session transcript...",
-      "source": "session_1"
+      "source": "conv-26"
     }
   ],
   "entries": [
     {
       "query": "What career path has Caroline decided to pursue?",
-      "expected_doc_ids": ["conv-26_s1", "conv-26_s4"],
+      "expected_doc_ids": ["session_1", "session_4"],
       "category": "multi-hop",
       "expected_answer": "counseling or mental health for transgender people"
     }
@@ -180,8 +194,10 @@ Summary saved to report/20260211_locomo_brv-cli.txt
 ```
 
 - `corpus`: documents to curate into the context tree (used by the `curate` command)
+- `doc_id`: matches the topic folder name in the context tree (e.g. `session_1` → `.brv/context-tree/{domain}/session_1/`)
+- `source`: the domain folder name (conversation ID for LoCoMo, question ID for LongMemEval)
 - `expected_doc_ids`: doc IDs that contain evidence for the answer
-- `expected_answer`: ground-truth answer for F1/Exact Match scoring
+- `expected_answer`: ground-truth answer for F1/Exact Match/LLM Judge scoring
 - `category`: optional, for per-category analysis (LoCoMo uses `single-hop`, `multi-hop`, `temporal`, `commonsense`, `adversarial`)
 
 ## Metrics

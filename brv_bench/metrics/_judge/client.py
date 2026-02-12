@@ -56,6 +56,14 @@ class JudgeClient(ABC):
     """Abstract async LLM judge client."""
 
     @abstractmethod
+    async def raw_call(self, prompt: str, *, max_tokens: int = 512) -> str:
+        """Send *prompt* to the LLM and return raw text.
+
+        Args:
+            prompt: Fully formatted prompt.
+            max_tokens: Maximum tokens in the response.
+        """
+
     async def judge(self, query: str, prompt: str) -> JudgeVerdict:
         """Send *prompt* to the LLM and return a verdict.
 
@@ -63,6 +71,8 @@ class JudgeClient(ABC):
             query: The original question (used as key in the verdict).
             prompt: Fully formatted judge prompt.
         """
+        raw = await self.raw_call(prompt, max_tokens=512)
+        return parse_verdict(query, raw)
 
 
 # ── Anthropic ────────────────────────────────────────────────────────
@@ -95,15 +105,14 @@ class AnthropicJudgeClient(JudgeClient):
         self._client = anthropic.AsyncAnthropic(api_key=resolved_key)
         self._model = model
 
-    async def judge(self, query: str, prompt: str) -> JudgeVerdict:
+    async def raw_call(self, prompt: str, *, max_tokens: int = 512) -> str:
         response = await self._client.messages.create(
             model=self._model,
-            max_tokens=256,
+            max_tokens=max_tokens,
             temperature=0.0,
             messages=[{"role": "user", "content": prompt}],
         )
-        raw = response.content[0].text
-        return parse_verdict(query, raw)
+        return response.content[0].text
 
 
 # ── OpenAI ───────────────────────────────────────────────────────────
@@ -136,15 +145,14 @@ class OpenAIJudgeClient(JudgeClient):
         self._client = openai.AsyncOpenAI(api_key=resolved_key)
         self._model = model
 
-    async def judge(self, query: str, prompt: str) -> JudgeVerdict:
+    async def raw_call(self, prompt: str, *, max_tokens: int = 512) -> str:
         response = await self._client.chat.completions.create(
             model=self._model,
-            max_tokens=256,
+            max_tokens=max_tokens,
             temperature=0.0,
             messages=[{"role": "user", "content": prompt}],
         )
-        raw = response.choices[0].message.content or ""
-        return parse_verdict(query, raw)
+        return response.choices[0].message.content or ""
 
 
 # ── Gemini ───────────────────────────────────────────────────────────
@@ -177,17 +185,16 @@ class GeminiJudgeClient(JudgeClient):
         self._client = genai.Client(api_key=resolved_key)
         self._model = model
 
-    async def judge(self, query: str, prompt: str) -> JudgeVerdict:
+    async def raw_call(self, prompt: str, *, max_tokens: int = 512) -> str:
         response = await self._client.aio.models.generate_content(
             model=self._model,
             contents=prompt,
             config={
                 "temperature": 0.0,
-                "max_output_tokens": 256,
+                "max_output_tokens": max_tokens,
             },
         )
-        raw = response.text or ""
-        return parse_verdict(query, raw)
+        return response.text or ""
 
 
 # ── Factory ──────────────────────────────────────────────────────────

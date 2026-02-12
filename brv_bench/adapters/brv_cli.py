@@ -1,9 +1,11 @@
 """BRV CLI adapter.
 
 Bridges brv-bench to the `brv` CLI using headless JSON mode.
-Queries the context tree to produce answers with source doc_ids.
-Curation is handled separately by the curate command.
+Queries the context tree and returns deterministic doc_ids from file paths.
+An optional AnswerJustifier synthesises a concise answer via an external LLM.
 """
+
+from __future__ import annotations
 
 import asyncio
 import json
@@ -12,6 +14,7 @@ import re
 import time
 
 from brv_bench.adapters.base import RetrievalAdapter
+from brv_bench.adapters.justifier import AnswerJustifier
 from brv_bench.types import (
     PromptConfig,
     QueryExecution,
@@ -20,12 +23,23 @@ from brv_bench.types import (
 
 logger = logging.getLogger(__name__)
 
+# Regex for a context-tree file path:
+# .brv/context-tree/{domain}/{topic}/{file}.md  → doc_id = {topic}
+_PATH_RE = re.compile(
+    r"\.brv/context-tree/[^/]+/([^/]+)/[^/]+\.md",
+)
+
 
 class BrvCliAdapter(RetrievalAdapter):
     """Adapter that shells out to the brv CLI in headless mode."""
 
-    def __init__(self, prompt_config: PromptConfig) -> None:
+    def __init__(
+        self,
+        prompt_config: PromptConfig,
+        justifier: AnswerJustifier | None = None,
+    ) -> None:
         self._prompt_config = prompt_config
+        self._justifier = justifier
 
     @property
     def name(self) -> str:
@@ -51,7 +65,12 @@ class BrvCliAdapter(RetrievalAdapter):
         )
         duration_ms = (time.perf_counter() - start) * 1000
 
-        answer, doc_ids = self._parse_query_response(stdout)
+        context_text, doc_ids = self._parse_query_response(stdout)
+
+        if self._justifier:
+            answer = await self._justifier.justify(query, context_text)
+        else:
+            answer = context_text
 
         results = tuple(
             SearchResult(
@@ -109,14 +128,15 @@ class BrvCliAdapter(RetrievalAdapter):
     def _parse_query_response(
         raw_json: str,
     ) -> tuple[str, list[str]]:
-        """Parse brv query JSON response into (answer, source_doc_ids).
+        """Parse brv query JSON into (context_text, doc_ids).
 
-        Expected JSON format:
-        {"command":"query","data":{"result":"...","status":"completed"},
-         "success":true,"timestamp":"..."}
+        The new ``brv query`` output is structured markdown with
+        ``**Details**:``, ``**Sources**:``, etc.  doc_ids are extracted
+        deterministically from file paths in the Sources section.
 
-        The result text should contain ANSWER: and SOURCES: lines
-        from the prompt template. Falls back to raw text if unparseable.
+        Returns:
+            (context_text, doc_ids) — context is the Details section,
+            doc_ids are topic folder names parsed from file paths.
         """
         try:
             data = json.loads(raw_json)
@@ -124,30 +144,48 @@ class BrvCliAdapter(RetrievalAdapter):
         except (json.JSONDecodeError, KeyError, TypeError):
             return raw_json, []
 
-        answer = ""
-        doc_ids: list[str] = []
+        context_text = _extract_details(result_text)
+        doc_ids = _extract_doc_ids(result_text)
 
-        answer_match = re.search(
-            r"ANSWER:\s*(.+?)(?:\n|$)", result_text,
-        )
-        if answer_match:
-            answer = answer_match.group(1).strip()
+        return context_text, doc_ids
 
-        sources_match = re.search(
-            r"SOURCES:\s*(.+?)(?:\n|$)", result_text,
-        )
-        if sources_match:
-            raw_sources = sources_match.group(1).strip()
-            if raw_sources.lower() == "none":
-                doc_ids = []
-            else:
-                doc_ids = [
-                    s.strip()
-                    for s in raw_sources.split(",")
-                    if s.strip()
-                ]
 
-        if not answer:
-            answer = result_text
+def _extract_details(text: str) -> str:
+    """Extract the **Details** section from brv query markdown."""
+    match = re.search(
+        r"\*\*Details\*\*:\s*(.*?)(?=\*\*Sources\*\*|\*\*Gaps\*\*|\Z)",
+        text,
+        re.DOTALL,
+    )
+    if match:
+        return match.group(1).strip()
+    return text
 
-        return answer, doc_ids
+
+def _extract_doc_ids(text: str) -> list[str]:
+    """Extract doc_ids from **Sources** file paths.
+
+    Path format: .brv/context-tree/{domain}/{topic}/{file}.md
+    doc_id = {topic} (the topic folder name).
+    """
+    sources_match = re.search(
+        r"\*\*Sources\*\*:\s*(.*?)(?=\*\*Gaps\*\*|\*\*|\Z)",
+        text,
+        re.DOTALL,
+    )
+    if not sources_match:
+        return []
+
+    raw = sources_match.group(1).strip()
+    if raw.lower() == "none":
+        return []
+
+    seen: set[str] = set()
+    doc_ids: list[str] = []
+    for path_match in _PATH_RE.finditer(raw):
+        topic = path_match.group(1)
+        if topic not in seen:
+            seen.add(topic)
+            doc_ids.append(topic)
+
+    return doc_ids
