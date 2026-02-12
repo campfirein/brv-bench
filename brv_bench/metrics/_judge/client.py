@@ -71,7 +71,7 @@ class JudgeClient(ABC):
             query: The original question (used as key in the verdict).
             prompt: Fully formatted judge prompt.
         """
-        raw = await self.raw_call(prompt, max_tokens=512)
+        raw = await self.raw_call(prompt, max_tokens=1024)
         return parse_verdict(query, raw)
 
 

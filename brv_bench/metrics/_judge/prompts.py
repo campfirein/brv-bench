@@ -33,7 +33,9 @@ PREDICTED ANSWER: {predicted_answer}
 
 ## Output
 Respond with EXACTLY this JSON format, nothing else:
-{{"reasoning": "<brief explanation>", "verdict": "correct"}}
+{{"reasoning": "<one sentence, max 30 words>", "verdict": "correct"}}
 or
-{{"reasoning": "<brief explanation>", "verdict": "incorrect"}}
+{{"reasoning": "<one sentence, max 30 words>", "verdict": "incorrect"}}
+
+IMPORTANT: Keep reasoning to ONE short sentence. Do NOT quote the answers.
 """
