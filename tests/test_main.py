@@ -39,6 +39,30 @@ class TestParseArgs:
         )
         assert args.limit == 5
 
+    def test_justifier_defaults(self):
+        args = parse_args(["evaluate", "--ground-truth", "gt.json"])
+        assert args.justifier_backend == "gemini"
+        assert args.justifier_model is None
+        assert args.justifier_concurrency == 5
+
+    def test_justifier_custom_options(self):
+        args = parse_args(
+            [
+                "evaluate",
+                "--ground-truth",
+                "gt.json",
+                "--justifier-backend",
+                "openai",
+                "--justifier-model",
+                "gpt-4o",
+                "--justifier-concurrency",
+                "10",
+            ]
+        )
+        assert args.justifier_backend == "openai"
+        assert args.justifier_model == "gpt-4o"
+        assert args.justifier_concurrency == 10
+
     def test_no_command_fails(self):
         with pytest.raises(SystemExit):
             parse_args([])
@@ -140,15 +164,15 @@ def _locomo_dataset(tmp_path: Path) -> Path:
         "name": "locomo",
         "corpus": [
             {
-                "doc_id": "conv-26_s1",
+                "doc_id": "session_1",
                 "content": "hello",
-                "source": "session_1",
+                "source": "conv-26",
             },
         ],
         "entries": [
             {
                 "query": "q",
-                "expected_doc_ids": ["conv-26_s1"],
+                "expected_doc_ids": ["session_1"],
             },
         ],
     }
@@ -195,15 +219,40 @@ class TestMain:
         gt_file = _locomo_dataset(tmp_path)
         output_file = tmp_path / "results.json"
 
+        md_result = (
+            "**Summary**: answer\n"
+            "**Details**: some facts\n"
+            "**Sources**: .brv/context-tree/conv_26/session_1/key_facts.md\n"
+            "**Gaps**: None"
+        )
+        mock_response = json.dumps({
+            "command": "query",
+            "data": {"result": md_result, "status": "completed"},
+            "success": True,
+        })
+
         mock_proc = AsyncMock()
         mock_proc.returncode = 0
         mock_proc.communicate.return_value = (
-            b'{"command":"query","data":{"result":"ANSWER: x\\nSOURCES: conv-26_s1","status":"completed"},"success":true}',
+            mock_response.encode(),
             b"",
         )
-        with patch(
-            "brv_bench.adapters.brv_cli.asyncio.create_subprocess_exec",
-            return_value=mock_proc,
+
+        mock_justifier = AsyncMock()
+        mock_justifier.justify = AsyncMock(return_value="justified answer")
+
+        with (
+            patch(
+                "brv_bench.adapters.brv_cli.asyncio.create_subprocess_exec",
+                return_value=mock_proc,
+            ),
+            patch(
+                "brv_bench.metrics._judge.client.create_judge_client",
+            ),
+            patch(
+                "brv_bench.adapters.justifier.AnswerJustifier",
+                return_value=mock_justifier,
+            ),
         ):
             code = asyncio.run(
                 main(

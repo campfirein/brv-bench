@@ -163,7 +163,8 @@ class LLMJudge(Metric):
                 _save_cache(self._cache_path, cached)
 
         # Store verdicts keyed by query for report enrichment.
-        self._last_verdicts = {}
+        # Accumulate (don't reset) so category-breakdown calls don't
+        # clobber verdicts from the overall compute() pass.
         for idx, (qe, gt) in enumerate(scorable):
             key = cache_keys[idx]
             self._last_verdicts[gt.query] = cached[key]

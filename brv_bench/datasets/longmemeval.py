@@ -281,59 +281,40 @@ Follow EXACTLY the file structure shown in the example above. \
 The key facts MUST NOT be too short or vague.\
 """
 
-QUERY_TEMPLATE = """\
-Answer the following question using ONLY the chat history stored in \
-the context tree. You MUST respond in EXACTLY this format — no extra text:
+QUERY_TEMPLATE = "{question}"
 
-ANSWER: <concise answer, few words only>
-SOURCES: <comma-separated session labels, e.g. session_1, session_3>
+JUSTIFIER_TEMPLATE = """\
+You are answering questions about past chat conversations using ONLY the \
+retrieved context below. Be concise — answer in as few words as possible \
+(names, dates, short phrases). If the context does not contain enough \
+information or the question contains a false premise, say \
+"I don't have enough information to answer this question."
 
-Rules:
-- The question below includes a Question ID. Search ONLY within the \
-domain folder matching that Question ID in the context tree \
-(e.g., ./brv/context-tree/<question_id>/).
-- DO NOT read files outside of that domain folder. Reading other domains is COMPLETELY forbidden. \
-- Answer must be as concise as possible (names, dates, short phrases).
-- SOURCES must list ONLY the session labels (session_1, session_2, etc.) \
-whose key facts contain the evidence.
-- If the information is NOT available or the question contains a false \
-premise, respond with:
-    ANSWER: I don't have enough information to answer this question.
-    SOURCES: none
+## Retrieved context
+
+{context}
 
 ## Examples
 
-- Question ID: gpt4_2655b836
-  Date: 2023/04/10 (Mon) 23:07
-  Question: What was the first issue with my car after its first service?
-- Your answer:
-    ANSWER: GPS system not functioning correctly
-    SOURCES: session_1, session_2, session_3
+Question: What was the first issue with my car after its first service?
+Answer: GPS system not functioning correctly
 
-- Question ID: 66f24dbb
-  Date: 2023/05/26 (Fri) 11:54
-  Question: What did I buy for my sister's birthday gift?
-- Your answer:
-    ANSWER: a yellow dress
-    SOURCES: session_1
+Question: What did I buy for my sister's birthday gift?
+Answer: a yellow dress
 
-- Question ID: gpt4_70e84552_abs
-  Date: 2023/06/15 (Thu) 10:30
-  Question: Which task did I complete first, fixing the fence or purchasing cows?
-- Your answer:
-    ANSWER: I don't have enough information to answer this question.
-    SOURCES: none
-
-- Note: Just the two-part answer: ANSWER and SOURCES. No summary or further discussion.
+Question: Which task did I complete first, fixing the fence or purchasing cows?
+Answer: I don't have enough information to answer this question.
 
 ## Now answer this question
 
-{question}\
+Question: {question}
+Answer:\
 """
 
 PROMPT_CONFIG = PromptConfig(
     curate_template=CURATE_TEMPLATE,
     query_template=QUERY_TEMPLATE,
+    justifier_template=JUSTIFIER_TEMPLATE,
 )
 
 register("longmemeval", PROMPT_CONFIG)

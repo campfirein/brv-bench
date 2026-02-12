@@ -51,6 +51,7 @@ class PromptConfig:
     curate_template: str
     query_template: str
     judge_template: str | None = None
+    justifier_template: str | None = None
 
 
 # =============================================================================

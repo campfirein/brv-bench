@@ -218,6 +218,10 @@ class TestPromptConfig:
         pc = PromptConfig(curate_template="c", query_template="q")
         assert pc.judge_template is None
 
+    def test_justifier_template_defaults_to_none(self):
+        pc = PromptConfig(curate_template="c", query_template="q")
+        assert pc.justifier_template is None
+
     def test_explicit_judge_template(self):
         pc = PromptConfig(
             curate_template="c",
@@ -225,6 +229,14 @@ class TestPromptConfig:
             judge_template="custom judge prompt",
         )
         assert pc.judge_template == "custom judge prompt"
+
+    def test_explicit_justifier_template(self):
+        pc = PromptConfig(
+            curate_template="c",
+            query_template="q",
+            justifier_template="Answer {question} from {context}",
+        )
+        assert pc.justifier_template == "Answer {question} from {context}"
 
     def test_frozen(self):
         pc = PromptConfig(curate_template="c", query_template="q")

@@ -10,7 +10,9 @@ LoCoMo structure:
 
 Corpus strategy:
 - Each session's full chat (all turns, both speakers) becomes
-  one CorpusDocument. doc_id format: {sample_id}_s{session_num}.
+  one CorpusDocument.
+- doc_id = session_N (matches topic folder in context tree)
+- source = sample_id (conversation id, used as domain folder)
 
 Evidence mapping:
 - QA evidence dia_ids are mapped to session doc_ids by
@@ -77,9 +79,8 @@ def _build_corpus(
     Each session becomes one CorpusDocument containing
     the full dialog (all turns, both speakers).
 
-    The conversation dict contains metadata keys
-    (speaker_a, speaker_b, session_N_date_time) alongside
-    session turn lists (session_N).
+    doc_id = session_N (topic folder name in context tree).
+    source = sample_id (domain folder name).
 
     Returns:
         List of CorpusDocuments, one per session.
@@ -93,7 +94,7 @@ def _build_corpus(
         if not isinstance(value, list):
             continue
         session_num = int(key.replace("session_", ""))
-        doc_id = f"{sample_id}_s{session_num}"
+        doc_id = f"session_{session_num}"
 
         date_time = conversation.get(f"{key}_date_time", "")
 
@@ -113,7 +114,7 @@ def _build_corpus(
             CorpusDocument(
                 doc_id=doc_id,
                 content="\n".join(lines),
-                source=key,
+                source=sample_id,
             )
         )
 
@@ -148,7 +149,7 @@ def _build_entries(
         for dia_id in qa.get("evidence", []):
             session_num = _extract_session_number(dia_id)
             if session_num is not None:
-                doc_ids.add(f"{sample_id}_s{session_num}")
+                doc_ids.add(f"session_{session_num}")
 
         # Get answer (adversarial uses adversarial_answer)
         answer = qa.get("answer", qa.get("adversarial_answer"))
@@ -156,9 +157,14 @@ def _build_entries(
         if not doc_ids:
             continue
 
+        query = (
+            f"Conversation: {sample_id}\n"
+            f"Question: {qa['question']}"
+        )
+
         entries.append(
             GroundTruthEntry(
-                query=qa["question"],
+                query=query,
                 expected_doc_ids=tuple(sorted(doc_ids)),
                 category=category,
                 expected_answer=answer,
@@ -225,8 +231,8 @@ extra context.md files that are not part of the benchmark corpus.
 ### Input (what you are given):
 
 ```
-doc_id: conv-26_s1
-source: session_1
+doc_id: session_1
+source: conv-26
 
 [1:56 pm on 8 May, 2023]
 Conversation between Caroline and Melanie
@@ -243,9 +249,9 @@ Melanie: I'm off to go swimming with the kids.
 ### Expected output (.brv/context-tree/conv_26/session_1/key_facts.md):
 
 ```markdown
-# Session 1 — conv-26_s1
+# Session 1 — conv-26
 
-**Source:** session_1
+**Source:** conv-26
 **Date/Time:** 1:56 pm on 8 May, 2023
 **Speakers:** Caroline, Melanie
 
@@ -275,46 +281,39 @@ Follow EXACTLY the file structure as the example above. \
 The key concepts MUST NOT be too short or vague.
 """
 
-QUERY_TEMPLATE = """\
-Answer the following question using ONLY the conversation context stored in \
-the context tree. You MUST respond in EXACTLY this format — no extra text:
+QUERY_TEMPLATE = "{question}"
 
-Follow these rules EXACTLY. DO NOT READ ANY FILES in this directory. The only files you are allowed to read are from the context tree ./brv/context-tree/
+JUSTIFIER_TEMPLATE = """\
+You are answering questions about long-term conversations using ONLY the \
+retrieved context below. Be concise — answer in as few words as possible \
+(names, dates, short phrases). If the context does not contain enough \
+information, say "I don't have enough information to answer this question."
 
-ANSWER: <concise answer, few words only>
-SOURCES: <comma-separated doc_ids, e.g. conv-26_s1, conv-26_s3>
+## Retrieved context
 
-Rules:
-- Answer must be as concise as possible (names, dates, short phrases).
-- SOURCES must list ONLY the doc_ids whose key facts contain the evidence.
-- SOURCES must NEVER be empty. Always list at least one doc_id.
+{context}
 
 ## Examples
 
-- Question: When did Caroline go to the LGBTQ support group?
-- Your answer:
-    ANSWER: 7 May 2023
-    SOURCES: conv-26_s1
+Question: When did Caroline go to the LGBTQ support group?
+Answer: 7 May 2023
 
-- Question: What career path has Caroline decided to pursue?
-- Your answer:
-    ANSWER: counseling or mental health for transgender people
-    SOURCES: conv-26_s1, conv-26_s4
+Question: What career path has Caroline decided to pursue?
+Answer: counseling or mental health for transgender people
 
-- Question: Where has Melanie camped?
-- Your answer:
-    ANSWER: beach, mountains, forest
-    SOURCES: conv-26_s4, conv-26_s6, conv-26_s8
+Question: What is the name of Melanie's pet dog?
+Answer: Max
 
-- Note: Again, just two two-part answer: ANSWER and SOURCES. No summary or further discussion.
 ## Now answer this question
 
-- Question: {question}\
+Question: {question}
+Answer:\
 """
 
 PROMPT_CONFIG = PromptConfig(
     curate_template=CURATE_TEMPLATE,
     query_template=QUERY_TEMPLATE,
+    justifier_template=JUSTIFIER_TEMPLATE,
 )
 
 register("locomo", PROMPT_CONFIG)
