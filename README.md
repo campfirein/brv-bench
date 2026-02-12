@@ -19,7 +19,7 @@ python -m brv_bench --help
 | Dataset | Description | Corpus | Queries | Download |
 |---------|-------------|--------|---------|----------|
 | LoCoMo | Long-term conversation memory QA (10 conversations, 272 sessions) | 272 docs | 1982 | [locomo10.json](https://github.com/snap-research/locomo/blob/main/data/locomo10.json) |
-| LongMemEval | Long-term interactive memory benchmark (ICLR 2025, 6 memory abilities) | 940 docs | 500 | [HuggingFace](https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned) |
+| LongMemEval | Long-term interactive memory benchmark (ICLR 2025, 6 memory abilities) | 948 docs (oracle) | 500 | [HuggingFace](https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned) |
 
 ## Preparing the Dataset
 
