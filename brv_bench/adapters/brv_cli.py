@@ -26,8 +26,18 @@ logger = logging.getLogger(__name__)
 # Regex for a context-tree file path:
 # .brv/context-tree/{domain}/{topic}/{file}.md  → doc_id = {topic}
 _PATH_RE = re.compile(
-    r"\.brv/context-tree/[^/]+/([^/]+)/[^/]+\.md",
+    r"\.brv/context-tree/([^/]+)/([^/]+)/[^/]+\.md",
 )
+
+# Regex to extract the source identifier from a query string.
+# Matches "Conversation: conv-26" or "Question ID: gpt4_2655b836".
+_SOURCE_RE = re.compile(r"(?:Conversation|Question ID):\s*(\S+)")
+
+
+def _extract_source_from_query(query: str) -> str | None:
+    """Extract the source identifier (conversation/question ID) from a query."""
+    m = _SOURCE_RE.search(query)
+    return m.group(1) if m else None
 
 
 class BrvCliAdapter(RetrievalAdapter):
@@ -65,7 +75,7 @@ class BrvCliAdapter(RetrievalAdapter):
         )
         duration_ms = (time.perf_counter() - start) * 1000
 
-        context_text, doc_ids = self._parse_query_response(stdout)
+        context_text, doc_ids = self._parse_query_response(stdout, query)
 
         if self._justifier:
             answer = await self._justifier.justify(query, context_text)
@@ -127,12 +137,18 @@ class BrvCliAdapter(RetrievalAdapter):
     @staticmethod
     def _parse_query_response(
         raw_json: str,
+        query: str = "",
     ) -> tuple[str, list[str]]:
         """Parse brv query JSON into (context_text, doc_ids).
 
         The new ``brv query`` output is structured markdown with
         ``**Details**:``, ``**Sources**:``, etc.  doc_ids are extracted
         deterministically from file paths in the Sources section.
+
+        Args:
+            raw_json: Raw JSON string from ``brv query``.
+            query: Original query string used to extract the source
+                identifier for domain-scoped filtering.
 
         Returns:
             (context_text, doc_ids) — context is the Details section,
@@ -144,8 +160,9 @@ class BrvCliAdapter(RetrievalAdapter):
         except (json.JSONDecodeError, KeyError, TypeError):
             return raw_json, []
 
+        source = _extract_source_from_query(query)
         context_text = _extract_details(result_text)
-        doc_ids = _extract_doc_ids(result_text)
+        doc_ids = _extract_doc_ids(result_text, source=source)
 
         return context_text, doc_ids
 
@@ -162,11 +179,14 @@ def _extract_details(text: str) -> str:
     return text
 
 
-def _extract_doc_ids(text: str) -> list[str]:
+def _extract_doc_ids(text: str, *, source: str | None = None) -> list[str]:
     """Extract doc_ids from **Sources** file paths.
 
     Path format: .brv/context-tree/{domain}/{topic}/{file}.md
     doc_id = {topic} (the topic folder name).
+
+    When *source* is provided, only paths whose domain folder matches
+    the source are included.
     """
     sources_match = re.search(
         r"\*\*Sources\*\*:\s*(.*?)(?=\*\*Gaps\*\*|\*\*|\Z)",
@@ -183,7 +203,10 @@ def _extract_doc_ids(text: str) -> list[str]:
     seen: set[str] = set()
     doc_ids: list[str] = []
     for path_match in _PATH_RE.finditer(raw):
-        topic = path_match.group(1)
+        domain = path_match.group(1)
+        topic = path_match.group(2)
+        if source and domain != source:
+            continue
         if topic not in seen:
             seen.add(topic)
             doc_ids.append(topic)

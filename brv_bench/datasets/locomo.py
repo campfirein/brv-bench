@@ -56,7 +56,7 @@ def transform(raw_path: Path) -> BenchmarkDataset:
     all_entries: list[GroundTruthEntry] = []
 
     for sample in raw_data:
-        sample_id = sample["sample_id"]
+        sample_id = sample["sample_id"].replace("-", "_")
         corpus = _build_corpus(sample_id, sample["conversation"])
         all_corpus.extend(corpus)
 
@@ -184,7 +184,7 @@ context tree. Follow these rules EXACTLY. DO NOT READ ANY FILES in this director
 
 ## Context tree structure
 
-- Domain = conversation ID (e.g. `conv-26`)
+- Domain = conversation ID (e.g. `conv_26`)
 - Topic  = session number (e.g. `session-1`, `session-2`)
 - One file per session containing ONLY structured key facts (no transcript).
 
@@ -232,7 +232,7 @@ extra context.md files that are not part of the benchmark corpus.
 
 ```
 doc_id: session_1
-source: conv-26
+source: conv_26
 
 [1:56 pm on 8 May, 2023]
 Conversation between Caroline and Melanie
@@ -249,9 +249,9 @@ Melanie: I'm off to go swimming with the kids.
 ### Expected output (.brv/context-tree/conv_26/session_1/key_facts.md):
 
 ```markdown
-# Session 1 — conv-26
+# Session 1 — conv_26
 
-**Source:** conv-26
+**Source:** conv_26
 **Date/Time:** 1:56 pm on 8 May, 2023
 **Speakers:** Caroline, Melanie
 
