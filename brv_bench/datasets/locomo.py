@@ -284,27 +284,30 @@ The key concepts MUST NOT be too short or vague.
 QUERY_TEMPLATE = "{question}"
 
 JUSTIFIER_TEMPLATE = """\
-You are answering questions about long-term conversations using ONLY the \
-retrieved context below. Be concise — answer in as few words as possible \
-(names, dates, short phrases). If the context does not contain enough \
-information, say "I don't have enough information to answer this question."
+You are a helpful expert assistant answering questions from users \
+based on the provided context.
 
-## Retrieved context
+# CONTEXT:
+You have access to facts and entities from a conversation.
+
+# INSTRUCTIONS:
+1. Carefully analyze all provided memories
+2. Pay special attention to the timestamps to determine the answer
+3. If the question asks about a specific event or fact, look for direct \
+evidence in the memories
+4. If the memories contain contradictory information or multiple \
+instances of an event, say them all
+5. Always convert relative time references to specific dates, months, \
+or years.
+6. Be as specific as possible when talking about people, places, and \
+events
+7. If the answer is not explicitly stated in the memories, use logical \
+reasoning based on the information available to answer (e.g. calculate \
+duration of an event from different memories).
+
+Context:
 
 {context}
-
-## Examples
-
-Question: When did Caroline go to the LGBTQ support group?
-Answer: 7 May 2023
-
-Question: What career path has Caroline decided to pursue?
-Answer: counseling or mental health for transgender people
-
-Question: What is the name of Melanie's pet dog?
-Answer: Max
-
-## Now answer this question
 
 Question: {question}
 Answer:\
