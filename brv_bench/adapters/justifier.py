@@ -31,5 +31,5 @@ class AnswerJustifier:
             Stripped LLM response text.
         """
         prompt = self._template.format(question=question, context=context)
-        raw = await self._client.raw_call(prompt)
+        raw = await self._client.raw_call(prompt, max_tokens=1024)
         return raw.strip()

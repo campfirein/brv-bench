@@ -186,13 +186,22 @@ class GeminiJudgeClient(JudgeClient):
         self._model = model
 
     async def raw_call(self, prompt: str, *, max_tokens: int = 512) -> str:
+        config: dict = {
+            "temperature": 0.0,
+            "max_output_tokens": max_tokens,
+        }
+
+        # Reduce thinking overhead — judge task is simple classification.
+        # Gemini 3 models use thinkingLevel; 2.5 models use thinkingBudget.
+        if "gemini-3" in self._model:
+            config["thinking_config"] = {"thinking_level": "minimal"}
+        else:
+            config["thinking_config"] = {"thinking_budget": 0}
+
         response = await self._client.aio.models.generate_content(
             model=self._model,
             contents=prompt,
-            config={
-                "temperature": 0.0,
-                "max_output_tokens": max_tokens,
-            },
+            config=config,
         )
         return response.text or ""
 
