@@ -6,7 +6,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from brv_bench.adapters.brv_cli import BrvCliAdapter, _extract_details, _extract_doc_ids
+from brv_bench.adapters.brv_cli import (
+    BrvCliAdapter,
+    _extract_details,
+    _extract_doc_ids,
+    _extract_source_from_query,
+)
 from brv_bench.types import PromptConfig
 
 
@@ -113,6 +118,19 @@ class TestExtractDetails:
 # ----------------------------------------------------------------
 
 
+class TestExtractSourceFromQuery:
+    def test_conversation_prefix(self):
+        q = "Conversation: conv-26\nWhat happened?"
+        assert _extract_source_from_query(q) == "conv-26"
+
+    def test_question_id_prefix(self):
+        q = "Question ID: gpt4_2655b836\nSome question"
+        assert _extract_source_from_query(q) == "gpt4_2655b836"
+
+    def test_no_prefix(self):
+        assert _extract_source_from_query("plain question") is None
+
+
 class TestExtractDocIds:
     def test_single_path(self):
         text = "**Sources**: .brv/context-tree/conv_26/session_1/key_facts.md"
@@ -156,6 +174,27 @@ class TestExtractDocIds:
         ids = _extract_doc_ids(text)
         assert ids == ["session_1", "session_2"]
 
+    def test_filters_wrong_domain_when_source_provided(self):
+        text = (
+            "**Sources**: .brv/context-tree/conv_26/session_1/f.md, "
+            ".brv/context-tree/conv_99/session_2/f.md"
+        )
+        ids = _extract_doc_ids(text, source="conv_26")
+        assert ids == ["session_1"]
+
+    def test_exact_domain_match_required(self):
+        text = "**Sources**: .brv/context-tree/conv_26/session_3/f.md"
+        ids = _extract_doc_ids(text, source="conv_26")
+        assert ids == ["session_3"]
+
+    def test_source_none_preserves_all(self):
+        text = (
+            "**Sources**: .brv/context-tree/conv_26/session_1/f.md, "
+            ".brv/context-tree/conv_99/session_2/f.md"
+        )
+        ids = _extract_doc_ids(text, source=None)
+        assert ids == ["session_1", "session_2"]
+
 
 # ----------------------------------------------------------------
 # _parse_query_response
@@ -169,8 +208,22 @@ class TestParseQueryResponse:
             ".brv/context-tree/conv_26/session_1/key_facts.md",
         )
         raw = _query_json(md)
-        context, ids = BrvCliAdapter._parse_query_response(raw)
+        context, ids = BrvCliAdapter._parse_query_response(
+            raw, "Conversation: conv_26\nWhat happened?",
+        )
         assert context == "Key facts about session"
+        assert ids == ["session_1"]
+
+    def test_filters_wrong_domain(self):
+        md = _markdown_response(
+            "facts",
+            ".brv/context-tree/conv_26/session_1/f.md, "
+            ".brv/context-tree/conv_99/session_2/f.md",
+        )
+        raw = _query_json(md)
+        context, ids = BrvCliAdapter._parse_query_response(
+            raw, "Conversation: conv_26\nq",
+        )
         assert ids == ["session_1"]
 
     def test_invalid_json_returns_raw(self):
@@ -210,7 +263,9 @@ class TestQuery:
             )
             mock_aio.subprocess = asyncio.subprocess
             adapter = BrvCliAdapter(PROMPT_CONFIG)
-            result = asyncio.run(adapter.query("test?", 10))
+            result = asyncio.run(
+                adapter.query("Conversation: conv_26\ntest?", 10),
+            )
             assert len(result.results) == 1
             assert result.results[0].path == "session_1"
 
@@ -227,10 +282,31 @@ class TestQuery:
             )
             mock_aio.subprocess = asyncio.subprocess
             adapter = BrvCliAdapter(PROMPT_CONFIG)
-            result = asyncio.run(adapter.query("test?", 10))
+            result = asyncio.run(
+                adapter.query("Conversation: c\ntest?", 10),
+            )
             assert len(result.results) == 2
             assert result.results[0].path == "session_1"
             assert result.results[1].path == "session_4"
+
+    def test_filters_wrong_domain_in_query(self):
+        md = _markdown_response(
+            "facts",
+            ".brv/context-tree/conv_26/session_1/f.md, "
+            ".brv/context-tree/conv_99/session_2/f.md",
+        )
+        resp = _query_json(md)
+        with patch("brv_bench.adapters.brv_cli.asyncio") as mock_aio:
+            mock_aio.create_subprocess_exec = AsyncMock(
+                return_value=_mock_proc(0, resp),
+            )
+            mock_aio.subprocess = asyncio.subprocess
+            adapter = BrvCliAdapter(PROMPT_CONFIG)
+            result = asyncio.run(
+                adapter.query("Conversation: conv_26\ntest?", 10),
+            )
+            assert len(result.results) == 1
+            assert result.results[0].path == "session_1"
 
     def test_without_justifier_answer_is_context(self):
         md = _markdown_response(
@@ -244,7 +320,9 @@ class TestQuery:
             )
             mock_aio.subprocess = asyncio.subprocess
             adapter = BrvCliAdapter(PROMPT_CONFIG)
-            result = asyncio.run(adapter.query("test?", 10))
+            result = asyncio.run(
+                adapter.query("Conversation: c\ntest?", 10),
+            )
             assert result.answer == "Raw key facts content"
 
     def test_with_justifier(self):
@@ -263,10 +341,11 @@ class TestQuery:
             )
             mock_aio.subprocess = asyncio.subprocess
             adapter = BrvCliAdapter(PROMPT_CONFIG, justifier=mock_justifier)
-            result = asyncio.run(adapter.query("What happened?", 10))
+            query = "Conversation: c\nWhat happened?"
+            result = asyncio.run(adapter.query(query, 10))
             assert result.answer == "Concise answer"
             mock_justifier.justify.assert_called_once_with(
-                "What happened?", "Key facts here",
+                query, "Key facts here",
             )
 
     def test_timing_is_positive(self):
@@ -278,7 +357,9 @@ class TestQuery:
             )
             mock_aio.subprocess = asyncio.subprocess
             adapter = BrvCliAdapter(PROMPT_CONFIG)
-            result = asyncio.run(adapter.query("test?", 10))
+            result = asyncio.run(
+                adapter.query("Conversation: c\ntest?", 10),
+            )
             assert result.duration_ms > 0
 
     def test_limit_truncates_results(self):
@@ -293,7 +374,9 @@ class TestQuery:
             )
             mock_aio.subprocess = asyncio.subprocess
             adapter = BrvCliAdapter(PROMPT_CONFIG)
-            result = asyncio.run(adapter.query("test?", 3))
+            result = asyncio.run(
+                adapter.query("Conversation: c\ntest?", 3),
+            )
             assert len(result.results) == 3
             assert result.total_found == 5
 

@@ -166,12 +166,12 @@ def _locomo_dataset(tmp_path: Path) -> Path:
             {
                 "doc_id": "session_1",
                 "content": "hello",
-                "source": "conv-26",
+                "source": "conv_26",
             },
         ],
         "entries": [
             {
-                "query": "q",
+                "query": "Conversation: conv_26\nq",
                 "expected_doc_ids": ["session_1"],
             },
         ],
