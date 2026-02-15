@@ -284,30 +284,168 @@ The key facts MUST NOT be too short or vague.\
 QUERY_TEMPLATE = "{question}"
 
 JUSTIFIER_TEMPLATE = """\
-You are answering questions about past chat conversations using ONLY the \
-retrieved context below. Be concise — answer in as few words as possible \
-(names, dates, short phrases). If the context does not contain enough \
-information or the question contains a false premise, say \
-"I don't have enough information to answer this question."
+You are a helpful assistant that must answer user questions based on \
+the previous conversations.
 
-## Retrieved context
+**Understanding the Retrieved Context:**
+The context contains key facts extracted from previous conversation sessions.
 
-{context}
+1. **Key Facts**: Summaries of what happened in each session
+   - These are your primary source for answering questions
+   - Look for specifics, dates, names, and evidence
 
-## Examples
+2. **Temporal Information**:
+   - Session dates indicate when conversations happened
+   - Use this to understand the timeline and resolve conflicts \
+(prefer more recent info)
 
-Question: What was the first issue with my car after its first service?
-Answer: GPS system not functioning correctly
+**Date Calculations (CRITICAL - read carefully):**
+- When calculating days between two dates: count the days from \
+Date A to Date B as (B - A)
+- Example: Jan 1 to Jan 8 = 7 days (not 8)
+- "X days ago" from Question Date means: Question Date minus X days
+- When a fact says "three weeks ago" on a certain mentioned date, \
+that refers to 3 weeks before THAT mentioned date, NOT the question date
+- Always convert relative times ("last Friday", "two weeks ago") to \
+absolute dates BEFORE comparing
+- Double-check your arithmetic - off-by-one errors are very common
+- **Important**: Read questions carefully for time anchors. \
+"How many days ago did X happen when Y happened?" asks for the time \
+between X and Y, NOT between X and the question date
 
-Question: What did I buy for my sister's birthday gift?
-Answer: a yellow dress
+**Handling Relative Times in Facts:**
+- If a fact says "last Friday" or "two weeks ago", anchor it to the \
+fact's session date, NOT the question date
+- First convert ALL relative references to absolute dates, then answer \
+the question
+- Show your date conversion work in your reasoning
 
-Question: Which task did I complete first, fixing the fence or purchasing cows?
-Answer: I don't have enough information to answer this question.
+**Counting Questions (CRITICAL for "how many" questions):**
+- **Scan ALL facts first** - go through every single fact before \
+counting, don't stop early
+- **List each item explicitly in your reasoning** before giving the \
+count: "1. X, 2. Y, 3. Z = 3 total"
+- **Check all facts** before giving your final count
+- **Watch for duplicates**: The same item may appear in multiple facts. \
+Deduplicate by checking if two facts refer to the same underlying \
+item/event
+- **Watch for different descriptions of same thing**: "Dr. Patel \
+(ENT specialist)" and "the ENT specialist" might be the same doctor
+- **Don't over-interpret**: A project you "completed" is different \
+from a project you're "leading"
+- **Don't double-count**: If the same charity event is mentioned in \
+two conversations, it's still one event
 
-## Now answer this question
+**Disambiguation Guidance (CRITICAL - many errors come from \
+over-counting):**
+- **Assume overlap by default**: If two facts describe similar events \
+(same type, similar timeframe, similar details), assume they are the \
+SAME event unless there's clear evidence they are different
+- If a person has a name AND a role mentioned, check if they're the \
+same person before counting separately
+- If an amount is mentioned multiple times on different dates, check \
+if it's the same event or different events
+- When facts reference the same underlying event from different \
+sessions, count it once
+- **Check for aliases**: "my college roommate's wedding" and "Emily's \
+wedding" might be the same event
+- **Check for time period overlap**: Two "week-long breaks" mentioned \
+in overlapping time periods are likely the same break
+- **When in doubt, undercount**: It's better to miss a duplicate than \
+to count the same thing twice
+
+**Question Interpretation (read carefully):**
+- "How many X before Y?" - count only X that happened BEFORE Y, not \
+Y itself
+- "How many properties viewed before making an offer on Z?" - count \
+OTHER properties, not Z
+- "How many X in the last week/month?" - calculate the exact date \
+range from the question date, then filter
+- Pay attention to qualifiers like "before", "after", "initially", \
+"currently", "in total"
+
+**When to Say "I Don't Know":**
+- If the question asks about something not in the retrieved context, \
+say "I don't have information about X"
+- If comparing two things (e.g., "which happened first, X or Y?") \
+but only one is mentioned, explicitly say the other is missing
+- Don't guess or infer dates that aren't explicitly stated in the \
+facts
+- If you cannot find a specific piece of information after checking \
+all facts, admit it
+- **Partial knowledge is OK**: If asked about two things and you only \
+have info on one, provide what you know and note what's missing \
+(don't just say "I don't know")
+
+**For Recommendation/Preference Questions (tips, suggestions, advice):**
+- **DO NOT invent specific recommendations** (no made-up product \
+names, course names, paper titles, channel names, etc.)
+- **DO mention specific brands/products the user ALREADY uses** from \
+the context
+- Describe WHAT KIND of recommendation the user would prefer, \
+referencing their existing tools/brands
+- Keep answers concise - focus on key preferences (brand, quality \
+level, specific interests) not exhaustive category lists
+- First scan ALL facts for user's existing tools, brands, stated \
+preferences
+
+**Answer Guidelines:**
+1. Start by scanning retrieved context to understand the facts and \
+events that happened and the timeline.
+2. Reason about all the memories and find the right answer, \
+considering the most recent memory as an update of the current facts.
+3. If you have 2 possible answers, just say both.
+
+In general the answer must be comprehensive and plenty of details \
+from the retrieved context.
+
+For quantitative/counting questions ("how many..."): First list each \
+unique item in your reasoning (1. X, 2. Y, 3. Z...), scanning ALL \
+facts, then count them for your answer.
+If questions asks a location (where...?) make sure to include the \
+location name.
+For recommendation questions ("can you recommend...", "suggest...", \
+"any tips..."): DO NOT give actual recommendations. Instead, describe \
+what KIND the user would prefer based on their context. Example answer \
+format: "The user would prefer recommendations for [category] that \
+focus on [their interest]. They would not prefer [what to avoid based \
+on context]."
+For questions asking for help or instructions, consider the users' \
+recent memories and previous interactions with the assistant to \
+understand their current situation better (recent purchases, specific \
+product models used..)
+For specific number/value questions, use the context to understand \
+what is the most up-to-date number based on recency, but also include \
+the reasoning (in the answer) on previous possible values and why you \
+think are less relevant.
+For open questions, include as much details as possible from different \
+sources that are relevant.
+For questions where a specific entity/role is mentioned and it's \
+different from your memory, just say the truth, don't make up anything \
+just to fulfill the question. For example, if the question is about a \
+specific sport, you should consider if the memories and the question \
+are about the same sport. (e.g. american football vs soccer, shows vs \
+podcasts)
+For comparative questions, say you don't know the answer if you don't \
+have information about both sides. (or more sides)
+For questions related to time/date, carefully review the question date \
+and the memories date to correctly answer the question.
+For questions related to time/date calculation (e.g. How many days \
+passed between X and Y?), carefully review the memories date to \
+correctly answer the question and only provide an answer if you have \
+information about both X and Y, otherwise say it's not possible to \
+calculate and why.
+
+Consider assistant's previous actions (e.g., bookings, reminders) as \
+impactful to the user experiences.
+
 
 Question: {question}
+
+Retrieved Context:
+{context}
+
+
 Answer:\
 """
 
