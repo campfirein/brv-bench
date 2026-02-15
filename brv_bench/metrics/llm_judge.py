@@ -26,7 +26,9 @@ import threading
 from pathlib import Path
 
 from brv_bench.metrics._judge.client import JudgeClient, JudgeVerdict
-from brv_bench.metrics._judge.prompts import DEFAULT_JUDGE_PROMPT
+from brv_bench.metrics._judge.prompts import (
+    get_judge_prompt,
+)
 from brv_bench.metrics.base import Metric
 from brv_bench.types import GroundTruthEntry, MetricResult, QueryExecution
 
@@ -39,10 +41,11 @@ def _cache_key(
     question: str,
     expected_answer: str,
     predicted_answer: str,
+    category: str = "unspecified",
 ) -> str:
     """Deterministic cache key from the judge inputs."""
     blob = json.dumps(
-        [question, expected_answer, predicted_answer],
+        [question, expected_answer, predicted_answer, category],
         sort_keys=True,
         ensure_ascii=True,
     )
@@ -112,7 +115,9 @@ class LLMJudge(Metric):
         cache_path: Path | None = None,
     ) -> None:
         self._client = client
-        self._prompt_template = prompt_template or DEFAULT_JUDGE_PROMPT
+        # None ⇒ use category-specific prompts via get_judge_prompt().
+        # Explicit string ⇒ override for all categories (backward compat).
+        self._prompt_template = prompt_template
         self._concurrency = concurrency
         self._cache_path = cache_path
         self._last_verdicts: dict[str, JudgeVerdict] = {}
@@ -150,7 +155,12 @@ class LLMJudge(Metric):
         cache_keys: dict[int, str] = {}  # index in scorable → key
         for idx, (qe, gt) in enumerate(scorable):
             assert gt.expected_answer is not None  # guarded above
-            key = _cache_key(gt.query, gt.expected_answer, qe.answer)
+            key = _cache_key(
+                gt.query,
+                gt.expected_answer,
+                qe.answer,
+                gt.category,
+            )
             cache_keys[idx] = key
             if key not in cached:
                 uncached.append((qe, gt))
@@ -206,7 +216,10 @@ class LLMJudge(Metric):
             async with sem:
                 assert gt.expected_answer is not None
                 assert qe.answer is not None
-                prompt = self._prompt_template.format(
+                template = self._prompt_template or get_judge_prompt(
+                    gt.category
+                )
+                prompt = template.format(
                     question=gt.query,
                     expected_answer=gt.expected_answer,
                     predicted_answer=qe.answer,
@@ -216,6 +229,7 @@ class LLMJudge(Metric):
                     gt.query,
                     gt.expected_answer,
                     qe.answer,
+                    gt.category,
                 )
                 return key, verdict
 
