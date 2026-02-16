@@ -71,7 +71,7 @@ class BrvCliAdapter(RetrievalAdapter):
 
         start = time.perf_counter()
         _, stdout = await self._run_brv(
-            "query", formatted, "--headless", "--format", "json",
+            "query", formatted, "--format", "json",
         )
         duration_ms = (time.perf_counter() - start) * 1000
 

@@ -49,7 +49,7 @@ async def curate_doc(
         "brv",
         "curate",
         formatted,
-        "--headless",
+        "--detach",
         "--format",
         "json",
         stdout=asyncio.subprocess.PIPE,
