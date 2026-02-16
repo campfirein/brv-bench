@@ -112,6 +112,43 @@ class TestExtractDetails:
         text = "Just some plain text without markers"
         assert _extract_details(text) == text
 
+    def test_filters_blocks_by_valid_topics(self):
+        text = (
+            "**Details**: \n"
+            "### Session 1\nFacts about session 1\n"
+            "---\n"
+            "### Session 2\nFacts about session 2\n"
+            "---\n"
+            "### Session 3\nFacts about session 3\n"
+            "**Sources**: x"
+        )
+        result = _extract_details(text, valid_topics={"session_1", "session_3"})
+        assert "Facts about session 1" in result
+        assert "Facts about session 3" in result
+        assert "Facts about session 2" not in result
+
+    def test_valid_topics_none_keeps_all(self):
+        text = (
+            "**Details**: \n"
+            "### Session 1\nFacts 1\n"
+            "---\n"
+            "### Session 2\nFacts 2\n"
+            "**Sources**: x"
+        )
+        result = _extract_details(text, valid_topics=None)
+        assert "Facts 1" in result
+        assert "Facts 2" in result
+
+    def test_topic_header_normalisation(self):
+        """'### Session 2' normalises to 'session_2' for matching."""
+        text = (
+            "**Details**: \n"
+            "### Session 2\nContent here\n"
+            "**Sources**: x"
+        )
+        result = _extract_details(text, valid_topics={"session_2"})
+        assert "Content here" in result
+
 
 # ----------------------------------------------------------------
 # _extract_doc_ids
@@ -215,8 +252,13 @@ class TestParseQueryResponse:
         assert ids == ["session_1"]
 
     def test_filters_wrong_domain(self):
+        details = (
+            "\n### Session 1\nCorrect domain facts\n"
+            "---\n"
+            "### Session 2\nWrong domain facts"
+        )
         md = _markdown_response(
-            "facts",
+            details,
             ".brv/context-tree/conv_26/session_1/f.md, "
             ".brv/context-tree/conv_99/session_2/f.md",
         )
@@ -225,6 +267,8 @@ class TestParseQueryResponse:
             raw, "Conversation: conv_26\nq",
         )
         assert ids == ["session_1"]
+        assert "Correct domain facts" in context
+        assert "Wrong domain facts" not in context
 
     def test_invalid_json_returns_raw(self):
         context, ids = BrvCliAdapter._parse_query_response("not json")

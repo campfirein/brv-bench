@@ -30,7 +30,7 @@ _PATH_RE = re.compile(
 )
 
 # Regex to extract the source identifier from a query string.
-# Matches "Conversation: conv-26" or "Question ID: gpt4_2655b836".
+# Matches "Conversation: conv_26" or "Question ID: gpt4_2655b836".
 _SOURCE_RE = re.compile(r"(?:Conversation|Question ID):\s*(\S+)")
 
 
@@ -161,22 +161,60 @@ class BrvCliAdapter(RetrievalAdapter):
             return raw_json, []
 
         source = _extract_source_from_query(query)
-        context_text = _extract_details(result_text)
         doc_ids = _extract_doc_ids(result_text, source=source)
+        valid_topics = set(doc_ids) if source else None
+        context_text = _extract_details(result_text, valid_topics=valid_topics)
 
         return context_text, doc_ids
 
 
-def _extract_details(text: str) -> str:
-    """Extract the **Details** section from brv query markdown."""
+def _extract_details(
+    text: str,
+    valid_topics: set[str] | None = None,
+) -> str:
+    """Extract the **Details** section from brv query markdown.
+
+    When *valid_topics* is provided, only topic blocks whose header
+    normalises to a value in the set are kept.  This prevents the
+    justifier from seeing context retrieved from other source domains.
+
+    brv query output groups each topic as::
+
+        ### Session 2
+        {content}
+        ---
+        ### Session 1
+        {content}
+    """
     match = re.search(
         r"\*\*Details\*\*:\s*(.*?)(?=\*\*Sources\*\*|\*\*Gaps\*\*|\Z)",
         text,
         re.DOTALL,
     )
-    if match:
-        return match.group(1).strip()
-    return text
+    if not match:
+        return text
+
+    details = match.group(1).strip()
+    if valid_topics is None:
+        return details
+
+    # Split into per-topic blocks on "---" separators and filter.
+    blocks = re.split(r"\n---\n", details)
+    filtered: list[str] = []
+    for block in blocks:
+        block = block.strip()
+        if not block:
+            continue
+        header = re.match(r"###\s+(.+)", block)
+        if header:
+            topic = header.group(1).strip().lower().replace(" ", "_")
+            if topic in valid_topics:
+                filtered.append(block)
+        else:
+            # Keep blocks without a recognisable header (e.g. preamble).
+            filtered.append(block)
+
+    return "\n\n---\n\n".join(filtered) if filtered else details
 
 
 def _extract_doc_ids(text: str, *, source: str | None = None) -> list[str]:
