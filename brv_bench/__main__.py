@@ -123,6 +123,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Max parallel justifier API calls (default: 5).",
     )
 
+    # Isolated mode
+    eval_parser.add_argument(
+        "--context-tree-source",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Path to a pre-curated context-tree directory. "
+            "When set, each query copies only its domain folder from this "
+            "source into .brv/context-tree/, runs the query, then deletes "
+            "it (isolated mode). The live context-tree stays blank between "
+            "queries."
+        ),
+    )
+
     return parser.parse_args(argv)
 
 
@@ -223,6 +238,7 @@ async def main(argv: list[str] | None = None) -> int:
         adapter = BrvCliAdapter(
             prompt_config=prompt_config,
             justifier=justifier,
+            context_tree_source=args.context_tree_source,
         )
 
         output_path = args.output
