@@ -171,7 +171,7 @@ class BrvCliAdapter(RetrievalAdapter):
     async def _verify_brv(self) -> None:
         """Check that brv CLI is on PATH and a .brv/ project exists."""
         returncode, _ = await self._run_brv(
-            "status", "--headless", "--format", "json",
+            "status", "-f", "json",
         )
         if returncode != 0:
             raise RuntimeError(
@@ -238,11 +238,14 @@ def _extract_details(
 
     brv query output groups each topic as::
 
-        ### Session 2
+        ### Session 2 - domain_id
         {content}
-        ---
-        ### Session 1
+        ### Session 1 - domain_id
         {content}
+
+    Each block may contain YAML frontmatter delimited by ``---``, so
+    blocks are split on ``### Session`` headers rather than ``---`` to
+    avoid fragmenting the frontmatter.
     """
     match = re.search(
         r"\*\*Details\*\*:\s*(.*?)(?=\*\*Sources\*\*|\*\*Gaps\*\*|\Z)",
@@ -256,8 +259,8 @@ def _extract_details(
     if valid_topics is None:
         return details
 
-    # Split into per-topic blocks on "---" separators and filter.
-    blocks = re.split(r"\n---\n", details)
+    # Split on ### Session headers to avoid splitting YAML frontmatter ---.
+    blocks = re.split(r"(?m)^(?=### Session\b)", details)
     filtered: list[str] = []
     for block in blocks:
         block = block.strip()
@@ -265,7 +268,14 @@ def _extract_details(
             continue
         header = re.match(r"###\s+(.+)", block)
         if header:
-            topic = header.group(1).strip().lower().replace(" ", "_")
+            raw = header.group(1).strip()
+            # Extract canonical "session_N" from e.g. "Session 30 - domain_id"
+            # or "Session 26, Date: ..." — ignore any suffix after the number.
+            session_m = re.match(r"session[_\s]+(\d+)", raw, re.IGNORECASE)
+            topic = (
+                f"session_{session_m.group(1)}" if session_m
+                else raw.lower().replace(" ", "_")
+            )
             if topic in valid_topics:
                 filtered.append(block)
         else:
