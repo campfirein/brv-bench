@@ -74,7 +74,7 @@ class TestSetup:
             adapter = BrvCliAdapter(PROMPT_CONFIG)
             asyncio.run(adapter.setup())
             call_args = mock_aio.create_subprocess_exec.call_args
-            assert call_args[0][:2] == ("brv", "status")
+            assert call_args[0][:4] == ("brv", "status", "-f", "json")
 
     def test_fails_without_brv(self):
         with patch("brv_bench.adapters.brv_cli.asyncio") as mock_aio:
@@ -116,9 +116,7 @@ class TestExtractDetails:
         text = (
             "**Details**: \n"
             "### Session 1\nFacts about session 1\n"
-            "---\n"
             "### Session 2\nFacts about session 2\n"
-            "---\n"
             "### Session 3\nFacts about session 3\n"
             "**Sources**: x"
         )
@@ -131,7 +129,6 @@ class TestExtractDetails:
         text = (
             "**Details**: \n"
             "### Session 1\nFacts 1\n"
-            "---\n"
             "### Session 2\nFacts 2\n"
             "**Sources**: x"
         )
@@ -148,6 +145,34 @@ class TestExtractDetails:
         )
         result = _extract_details(text, valid_topics={"session_2"})
         assert "Content here" in result
+
+    def test_topic_header_with_domain_suffix(self):
+        """'### Session 30 - bf659f65' normalises to 'session_30'."""
+        text = (
+            "**Details**: \n"
+            "### Session 30 - bf659f65\nCorrect facts\n"
+            "### Session 31 - bf659f65\nOther facts\n"
+            "**Sources**: x"
+        )
+        result = _extract_details(text, valid_topics={"session_30"})
+        assert "Correct facts" in result
+        assert "Other facts" not in result
+
+    def test_yaml_frontmatter_not_split_as_block_boundary(self):
+        """YAML --- inside a session block must not fragment the block."""
+        text = (
+            "**Details**: \n"
+            "### Session 1\n"
+            "---\ntitle: Key Facts\n---\n"
+            "## Key Facts\n- Some fact\n"
+            "### Session 2\n"
+            "---\ntitle: Key Facts\n---\n"
+            "## Key Facts\n- Other fact\n"
+            "**Sources**: x"
+        )
+        result = _extract_details(text, valid_topics={"session_1"})
+        assert "Some fact" in result
+        assert "Other fact" not in result
 
 
 # ----------------------------------------------------------------
@@ -254,7 +279,6 @@ class TestParseQueryResponse:
     def test_filters_wrong_domain(self):
         details = (
             "\n### Session 1\nCorrect domain facts\n"
-            "---\n"
             "### Session 2\nWrong domain facts"
         )
         md = _markdown_response(

@@ -70,6 +70,7 @@ Queries the context tree for each ground-truth entry (1982 for LoCoMo), computes
 - Results are always saved to `report/{yyyymmdd}_{dataset}_{memory_system}.json` (detailed per-query data) and `.txt` (summary).
 - Use `--output path/to/results.json` to override the output location.
 - Per-query results are saved **incrementally** (crash-safe).
+- Use `--context-tree-source PATH` to enable isolated mode (see section 4 below).
 - Run as many times as you want -- after tuning search, changing curate strategy, etc.
 
 ### 3. Evaluate with LLM-as-Judge
@@ -119,7 +120,42 @@ The `--judge-cache` flag saves verdicts to a JSON file so re-runs don't repeat A
 | `--judge-concurrency` | `5` | Max parallel judge API calls |
 | `--judge-cache` | none | Path to JSON cache file for verdicts |
 
-### 4. Answer Justifier
+### 4. Isolated Mode (per-query domain isolation)
+
+By default `evaluate` queries whatever is already in `.brv/context-tree/`. When the tree contains all questions' sessions simultaneously, brv may return results from the wrong question's domain, which the source filter then discards — leaving the query with no hits.
+
+**Isolated mode** fixes this by scoping the context tree to **one question at a time**:
+
+1. Copy `{source}/{question_id}/` → `.brv/context-tree/{question_id}/`
+2. Run `brv query` (only that question's sessions are visible)
+3. Delete `.brv/context-tree/{question_id}/` before the next iteration
+
+Use it with a **pre-curated** context tree directory via `--context-tree-source`:
+
+```bash
+python -m brv_bench evaluate \
+  --ground-truth output/longmemeval_benchmark.json \
+  --context-tree-source LongmemEval-bench/merged/.brv/context-tree \
+  --judge --judge-cache report/judge_cache.json
+```
+
+The source directory must follow the standard layout:
+```
+{context-tree-source}/
+├── {question_id_1}/
+│   ├── session_1/
+│   │   └── key_facts.md
+│   └── session_2/
+│       └── key_facts.md
+├── {question_id_2}/
+│   └── ...
+```
+
+The live `.brv/context-tree/` is cleared at the start of each run (`reset`) and stays blank between queries. This eliminates cross-question contamination without requiring any changes to curation.
+
+**Pre-curated context trees for LongMemEval** are stored in `LongmemEval-bench/merged/.brv/context-tree/` (all 500 question domains merged from the split parts).
+
+### 5. Answer Justifier
 
 `brv query` performs direct search and returns raw context-tree content (key facts) — it does not synthesise answers. The **Answer Justifier** is an external LLM call that takes the retrieved context + question and produces a concise answer for F1/EM/LLM-Judge metrics.
 

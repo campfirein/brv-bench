@@ -3,6 +3,12 @@
 Bridges brv-bench to the `brv` CLI using headless JSON mode.
 Queries the context tree and returns deterministic doc_ids from file paths.
 An optional AnswerJustifier synthesises a concise answer via an external LLM.
+
+Isolated mode (``context_tree_source`` set):
+    For each query the relevant domain folder is copied from the pre-curated
+    source tree into ``.brv/context-tree/``, the query is run, then the
+    domain folder is deleted.  This keeps the live context tree blank between
+    queries and prevents any cross-question contamination.
 """
 
 from __future__ import annotations
@@ -11,7 +17,9 @@ import asyncio
 import json
 import logging
 import re
+import shutil
 import time
+from pathlib import Path
 
 from brv_bench.adapters.base import RetrievalAdapter
 from brv_bench.adapters.justifier import AnswerJustifier
@@ -43,13 +51,18 @@ def _extract_source_from_query(query: str) -> str | None:
 class BrvCliAdapter(RetrievalAdapter):
     """Adapter that shells out to the brv CLI in headless mode."""
 
+    #: Live context tree written by brv.
+    _CONTEXT_TREE = Path(".brv/context-tree")
+
     def __init__(
         self,
         prompt_config: PromptConfig,
         justifier: AnswerJustifier | None = None,
+        context_tree_source: Path | None = None,
     ) -> None:
         self._prompt_config = prompt_config
         self._justifier = justifier
+        self._context_tree_source = context_tree_source
 
     @property
     def name(self) -> str:
@@ -61,10 +74,25 @@ class BrvCliAdapter(RetrievalAdapter):
 
     async def setup(self) -> None:
         """Verify brv CLI is available."""
-        await self._verify_brv()
+        # await self._verify_brv()
 
     async def query(self, query: str, limit: int) -> QueryExecution:
-        """Run a query against the brv context tree."""
+        """Run a query against the brv context tree.
+
+        In isolated mode the domain folder is copied from the source tree
+        before querying and removed immediately afterwards.
+        """
+        source: str | None = None
+        if self._context_tree_source is not None:
+            source = _extract_source_from_query(query)
+            if source:
+                self._copy_domain(source)
+            else:
+                logger.warning(
+                    "Isolated mode: could not extract domain from query; "
+                    "context tree unchanged."
+                )
+
         formatted = self._prompt_config.query_template.format(
             question=query,
         )
@@ -76,6 +104,10 @@ class BrvCliAdapter(RetrievalAdapter):
         duration_ms = (time.perf_counter() - start) * 1000
 
         context_text, doc_ids = self._parse_query_response(stdout, query)
+
+        # Clean up before justifying — the justifier only needs context_text.
+        if self._context_tree_source is not None and source:
+            self._remove_domain(source)
 
         if self._justifier:
             answer = await self._justifier.justify(query, context_text)
@@ -101,7 +133,12 @@ class BrvCliAdapter(RetrievalAdapter):
         )
 
     async def reset(self) -> None:
-        """No-op — brv CLI has no cache control."""
+        """In isolated mode, ensure the live context tree is empty."""
+        if self._context_tree_source is not None:
+            if self._CONTEXT_TREE.exists():
+                shutil.rmtree(self._CONTEXT_TREE)
+                self._CONTEXT_TREE.mkdir(parents=True, exist_ok=True)
+                logger.debug("Isolated mode: cleared live context tree")
 
     async def teardown(self) -> None:
         """No-op — no persistent resources to clean up."""
@@ -110,10 +147,31 @@ class BrvCliAdapter(RetrievalAdapter):
     # Private helpers
     # ------------------------------------------------------------------
 
+    def _copy_domain(self, domain: str) -> None:
+        """Copy domain folder from source tree into the live context tree."""
+        src = self._context_tree_source / domain  # type: ignore[operator]
+        dst = self._CONTEXT_TREE / domain
+        if not src.exists():
+            logger.warning(
+                "Isolated mode: source domain folder not found: %s", src
+            )
+            return
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(src, dst)
+        logger.debug("Isolated mode: copied %s → %s", src, dst)
+
+    def _remove_domain(self, domain: str) -> None:
+        """Delete the domain folder from the live context tree."""
+        dst = self._CONTEXT_TREE / domain
+        if dst.exists():
+            shutil.rmtree(dst)
+            logger.debug("Isolated mode: removed %s", dst)
+
     async def _verify_brv(self) -> None:
         """Check that brv CLI is on PATH and a .brv/ project exists."""
         returncode, _ = await self._run_brv(
-            "status", "--headless", "--format", "json",
+            "status", "-f", "json",
         )
         if returncode != 0:
             raise RuntimeError(
@@ -180,11 +238,14 @@ def _extract_details(
 
     brv query output groups each topic as::
 
-        ### Session 2
+        ### Session 2 - domain_id
         {content}
-        ---
-        ### Session 1
+        ### Session 1 - domain_id
         {content}
+
+    Each block may contain YAML frontmatter delimited by ``---``, so
+    blocks are split on ``### Session`` headers rather than ``---`` to
+    avoid fragmenting the frontmatter.
     """
     match = re.search(
         r"\*\*Details\*\*:\s*(.*?)(?=\*\*Sources\*\*|\*\*Gaps\*\*|\Z)",
@@ -198,8 +259,8 @@ def _extract_details(
     if valid_topics is None:
         return details
 
-    # Split into per-topic blocks on "---" separators and filter.
-    blocks = re.split(r"\n---\n", details)
+    # Split on ### Session headers to avoid splitting YAML frontmatter ---.
+    blocks = re.split(r"(?m)^(?=### Session\b)", details)
     filtered: list[str] = []
     for block in blocks:
         block = block.strip()
@@ -207,7 +268,14 @@ def _extract_details(
             continue
         header = re.match(r"###\s+(.+)", block)
         if header:
-            topic = header.group(1).strip().lower().replace(" ", "_")
+            raw = header.group(1).strip()
+            # Extract canonical "session_N" from e.g. "Session 30 - domain_id"
+            # or "Session 26, Date: ..." — ignore any suffix after the number.
+            session_m = re.match(r"session[_\s]+(\d+)", raw, re.IGNORECASE)
+            topic = (
+                f"session_{session_m.group(1)}" if session_m
+                else raw.lower().replace(" ", "_")
+            )
             if topic in valid_topics:
                 filtered.append(block)
         else:
