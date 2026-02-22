@@ -33,7 +33,14 @@ def parse_verdict(query: str, raw: str) -> JudgeVerdict:
     malformed response does not crash the entire evaluation run.
     """
     try:
-        data = json.loads(raw)
+        # Strip markdown code fences that some models wrap around JSON output.
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("```", 2)[1]
+            if cleaned.startswith("json"):
+                cleaned = cleaned[4:]
+            cleaned = cleaned.rsplit("```", 1)[0].strip()
+        data = json.loads(cleaned)
         verdict = str(data.get("verdict", "")).lower().strip()
         reasoning = str(data.get("reasoning", ""))
         return JudgeVerdict(
