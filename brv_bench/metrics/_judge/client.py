@@ -157,9 +157,12 @@ class AnthropicJudgeClient(JudgeClient):
         else:
             kwargs["temperature"] = 0.0
 
-        response = await self._client.messages.create(**kwargs)
+        # Use streaming to avoid the SDK's 10-minute timeout guard that
+        # triggers when max_tokens is large (e.g. 32 768 for the justifier).
+        async with self._client.messages.stream(**kwargs) as stream:
+            message = await stream.get_final_message()
         # Response may contain thinking blocks; return the first text block.
-        for block in response.content:
+        for block in message.content:
             if block.type == "text":
                 return block.text
         return ""
