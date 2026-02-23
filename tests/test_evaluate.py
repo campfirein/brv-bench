@@ -336,12 +336,9 @@ class TestEvaluate:
         )
 
         assert report.query_count == 2
-        assert len(report.metrics) == 11
+        assert len(report.metrics) == 8
         metric_names = {m.name for m in report.metrics}
         assert "precision@5" in metric_names
         assert "recall@10" in metric_names
         assert "mrr" in metric_names
-        assert "diversity@5" in metric_names
         assert "cold-latency" in metric_names
-        assert "F1" in metric_names
-        assert "Exact Match" in metric_names

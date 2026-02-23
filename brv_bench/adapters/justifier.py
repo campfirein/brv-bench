@@ -1,7 +1,7 @@
 """Answer justifier — LLM-based answer synthesis from retrieved context.
 
 Takes raw context (key facts) retrieved by ``brv query`` and produces
-a concise answer suitable for F1/EM/LLM-Judge evaluation metrics.
+a concise answer suitable for LLM-Judge evaluation.
 """
 
 from __future__ import annotations
@@ -31,5 +31,5 @@ class AnswerJustifier:
             Stripped LLM response text.
         """
         prompt = self._template.format(question=question, context=context)
-        raw = await self._client.raw_call(prompt, max_tokens=1024)
+        raw = await self._client.raw_call(prompt, max_tokens=32768)
         return raw.strip()

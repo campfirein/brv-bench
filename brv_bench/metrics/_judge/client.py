@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
@@ -78,11 +79,35 @@ class JudgeClient(ABC):
             query: The original question (used as key in the verdict).
             prompt: Fully formatted judge prompt.
         """
-        raw = await self.raw_call(prompt, max_tokens=1024)
+        raw = await self.raw_call(prompt, max_tokens=8192)
         return parse_verdict(query, raw)
 
 
 # ── Anthropic ────────────────────────────────────────────────────────
+
+# Adaptive thinking: Opus 4.6 and Sonnet 4.6.
+# budget_tokens / type:"enabled" is deprecated on both.
+# Effort level is a separate output_config parameter — NOT inside thinking.
+# Supported effort levels: low | medium | high | max (max: Opus 4.6 only).
+_ANTHROPIC_ADAPTIVE_MODELS = ("claude-opus-4-6", "claude-sonnet-4-6")
+
+# All other Claude 3.7+ / Claude 4 models use manual extended thinking.
+# (Haiku 4.5, Sonnet 4.5, Opus 4.5, Opus 4.1, Sonnet 4.0, Opus 4.0, Sonnet 3.7)
+_ANTHROPIC_ENABLED_PREFIXES = (
+    "claude-3-7",
+    "claude-haiku-4",
+    "claude-sonnet-4",   # matches 4.0 / 4.5; 4.6 caught above
+    "claude-opus-4",     # matches 4.0 / 4.1 / 4.5; 4.6 caught above
+)
+
+
+def _anthropic_thinking_mode(model: str) -> str | None:
+    """Return 'adaptive' (Opus/Sonnet 4.6), 'enabled' (other 4/3.7), or None."""
+    if any(p in model for p in _ANTHROPIC_ADAPTIVE_MODELS):
+        return "adaptive"
+    if any(p in model for p in _ANTHROPIC_ENABLED_PREFIXES):
+        return "enabled"
+    return None
 
 
 class AnthropicJudgeClient(JudgeClient):
@@ -90,7 +115,7 @@ class AnthropicJudgeClient(JudgeClient):
 
     def __init__(
         self,
-        model: str = "claude-sonnet-4-5-20250929",
+        model: str = "claude-sonnet-4-6",
         api_key: str | None = None,
     ) -> None:
         try:
@@ -113,16 +138,78 @@ class AnthropicJudgeClient(JudgeClient):
         self._model = model
 
     async def raw_call(self, prompt: str, *, max_tokens: int = 512) -> str:
-        response = await self._client.messages.create(
-            model=self._model,
-            max_tokens=max_tokens,
-            temperature=0.0,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return response.content[0].text
+        kwargs: dict = {
+            "model": self._model,
+            "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+
+        # Thinking config — temperature must be omitted when thinking is active.
+        # Opus/Sonnet 4.6: adaptive thinking; effort goes in output_config
+        #   (separate top-level param), NOT inside the thinking dict.
+        # Other Claude 4 / 3.7: manual extended thinking with minimum budget.
+        mode = _anthropic_thinking_mode(self._model)
+        if mode == "adaptive":
+            kwargs["thinking"] = {"type": "adaptive"}
+            kwargs["output_config"] = {"effort": "low"}
+        elif mode == "enabled":
+            kwargs["thinking"] = {"type": "enabled", "budget_tokens": 1024}
+        else:
+            kwargs["temperature"] = 0.0
+
+        response = await self._client.messages.create(**kwargs)
+        # Response may contain thinking blocks; return the first text block.
+        for block in response.content:
+            if block.type == "text":
+                return block.text
+        return ""
 
 
 # ── OpenAI ───────────────────────────────────────────────────────────
+
+# Both o-series and GPT-5 series are reasoning models in the Chat Completions
+# API and share the same parameter shape:
+#   - max_completion_tokens  (not max_tokens)
+#   - reasoning_effort="..."  (top-level string — NOT nested reasoning object;
+#     the nested reasoning={effort:...} format is the Responses API only)
+#   - no temperature
+#
+# Effort values differ by model:
+#   o-series (o1/o3/o4-mini): low | medium | high   → use "low"
+#   gpt-5 (original):         minimal | low | medium | high → use "minimal"
+#   gpt-5.1 / gpt-5.2 / gpt-5.3 / gpt-5.x-codex*: none | low | medium | high | xhigh → use "none"
+#
+# * Codex models (gpt-5.2-codex, gpt-5.3-codex) currently require the Responses
+#   API, not Chat Completions. They match the gpt-5 prefix but will fail at the
+#   API level if passed here — which is the correct behaviour.
+#
+# Standard models (gpt-4o etc.) use max_tokens + temperature=0.
+
+
+def _openai_model_class(model: str) -> str:
+    """Classify OpenAI model for API parameter selection.
+
+    Returns:
+        'reasoning' — o-series or GPT-5 series (max_completion_tokens + reasoning_effort)
+        'standard'  — everything else (max_tokens + temperature=0)
+    """
+    if model.startswith("gpt-5") or re.match(r"^o\d", model):
+        return "reasoning"
+    return "standard"
+
+
+def _openai_min_effort(model: str) -> str:
+    """Return the lowest reasoning_effort value for a given reasoning model.
+
+    o-series:        "low"     (minimum available; none/minimal not supported)
+    gpt-5 original:  "minimal" (unique to gpt-5 and gpt-5-* variants)
+    gpt-5.1+:        "none"    (gpt-5.1, gpt-5.2, gpt-5.3, gpt-5.x-codex, etc.)
+    """
+    if re.match(r"^o\d", model):  # o-series
+        return "low"
+    if model == "gpt-5" or model.startswith("gpt-5-"):
+        return "minimal"
+    return "none"
 
 
 class OpenAIJudgeClient(JudgeClient):
@@ -153,12 +240,22 @@ class OpenAIJudgeClient(JudgeClient):
         self._model = model
 
     async def raw_call(self, prompt: str, *, max_tokens: int = 512) -> str:
-        response = await self._client.chat.completions.create(
-            model=self._model,
-            max_tokens=max_tokens,
-            temperature=0.0,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        kwargs: dict = {
+            "model": self._model,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+
+        model_class = _openai_model_class(self._model)
+
+        if model_class == "reasoning":
+            # o-series and GPT-5: top-level reasoning_effort string, no temperature.
+            kwargs["max_completion_tokens"] = max_tokens
+            kwargs["reasoning_effort"] = _openai_min_effort(self._model)
+        else:
+            kwargs["max_tokens"] = max_tokens
+            kwargs["temperature"] = 0.0
+
+        response = await self._client.chat.completions.create(**kwargs)
         return response.choices[0].message.content or ""
 
 
@@ -201,7 +298,7 @@ class GeminiJudgeClient(JudgeClient):
         # Reduce thinking overhead — judge task is simple classification.
         # Gemini 3 models use thinkingLevel; 2.5 models use thinkingBudget.
         if "gemini-3" in self._model:
-            config["thinking_config"] = {"thinking_level": "minimal"}
+            config["thinking_config"] = {"thinking_level": "low"}
         else:
             config["thinking_config"] = {"thinking_budget": 0}
 

@@ -7,7 +7,7 @@ from brv_bench.metrics import primary_metrics
 from brv_bench.types import BenchmarkReport, MetricResult
 
 # Metrics displayed as decimal (0.xx) rather than percentage
-_DECIMAL_METRICS = {"mrr", "ndcg", "diversity", "llm-judge"}
+_DECIMAL_METRICS = {"mrr", "ndcg", "llm-judge"}
 
 # Primary metric IDs derived from the registry (not hardcoded)
 _PRIMARY_IDS: set[str] = {m.id for m in primary_metrics()}

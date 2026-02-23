@@ -63,7 +63,7 @@ python -m brv_bench evaluate \
 |------|---------|-------------|
 | `--judge` | off | Enable LLM-as-Judge metric |
 | `--judge-backend` | `gemini` | `gemini`, `anthropic`, or `openai` |
-| `--judge-model` | backend default | Model name override |
+| `--judge-model` | `gemini-2.5-flash` / `claude-sonnet-4-6` / `gpt-4o-2024-08-06` | Model name override (default varies by backend) |
 | `--judge-concurrency` | `5` | Max parallel judge API calls |
 | `--judge-cache` | none | Path to JSON cache file |
 
@@ -87,7 +87,7 @@ Automatically enabled for datasets with a `justifier_template` (LoCoMo and LongM
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--justifier-backend` | `gemini` | `gemini`, `anthropic`, or `openai` |
-| `--justifier-model` | backend default | Model name override |
+| `--justifier-model` | `gemini-2.5-flash` / `claude-sonnet-4-6` / `gpt-4o-2024-08-06` | Model name override (default varies by backend) |
 
 ## Ground Truth Format
 
@@ -115,6 +115,7 @@ Automatically enabled for datasets with a `justifier_template` (LoCoMo and LongM
 | MRR | Reciprocal rank of the first relevant result |
 | Cold Latency | Query time with no cache (p50/p95/p99) |
 
+
 ## Results on LoCoMo (LLM Judge Accuracy %)
 
 | Method | Single-Hop | Multi-Hop | Open Domain | Temporal | Overall |
@@ -130,6 +131,19 @@ Automatically enabled for datasets with a `justifier_template` (LoCoMo and LongM
 | Mem0 | 67.13 | 51.15 | 72.93 | 55.51 | 66.88 |
 | LangMem | 62.23 | 47.92 | 71.12 | 23.43 | 58.10 |
 | OpenAI | 63.79 | 42.92 | 62.29 | 21.71 | 52.90 |
+
+## Reproduction
+
+To reproduce the ByteRover results above:
+
+```bash
+# For LoCoMo
+python -m brv_bench evaluate \
+  --ground-truth output/locomo.json \
+  --judge \
+  --judge-model "gemini-2.5-flash" \
+  --justifier-model "gemini-3-pro-preview"
+```
 
 ## Requirements
 - byterover-cli >= 2.0.0

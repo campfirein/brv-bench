@@ -124,8 +124,8 @@ def _format_session(
 def _build_entries(raw_data: list[dict]) -> list[GroundTruthEntry]:
     """Build ground truth entries from evaluation instances.
 
-    Embeds question_id and question_date into the query string
-    so the query template can scope search to the right domain.
+    Embeds question_id (required for isolated mode domain scoping) and
+    question_date into the query string.
     Maps answer_session_ids to session_N labels.
     """
     entries: list[GroundTruthEntry] = []
@@ -149,16 +149,10 @@ def _build_entries(raw_data: list[dict]) -> list[GroundTruthEntry]:
             if sid in sid_to_label
         ]
 
-        # Embed question_id and question_date into query string
+        raw_question = item["question"]
         question_id = item["question_id"]
         question_date = item.get("question_date", "")
-        raw_question = item["question"]
-
-        query = (
-            f"Question ID: {question_id}\n"
-            f"Date: {question_date}\n"
-            f"Question: {raw_question}"
-        )
+        query = f"Question ID: {question_id}\nDate: {question_date}\nQuestion: {raw_question}"
 
         entries.append(
             GroundTruthEntry(
@@ -254,8 +248,10 @@ Assistant: Great to hear about the brakes. Let me know if the reset fixes it.
 ### Expected output (.brv/context-tree/gpt4_2655b836/session_2/key_facts.md):
 
 ```markdown
-# Session 2
-**Date:** 2023/04/10 (Mon) 14:47
+## Narrative
+### Rules
+# Session 2 - gpt4_2655b836
+**Date:** 2022/04/10 (Mon) 14:32
 
 ## Key Facts
 - User just got car back from its first service

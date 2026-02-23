@@ -157,10 +157,7 @@ def _build_entries(
         if not doc_ids:
             continue
 
-        query = (
-            f"Conversation: {sample_id}\n"
-            f"Question: {qa['question']}"
-        )
+        query = qa["question"]
 
         entries.append(
             GroundTruthEntry(
