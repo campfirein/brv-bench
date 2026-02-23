@@ -1,6 +1,6 @@
 # brv-bench
 
-Benchmark suite for evaluating retrieval quality, latency, and diversity of AI agent context systems.
+Benchmark suite for evaluating retrieval quality, latency, and diversity of AI agent context systems. Built for [ByteRover](https://www.byterover.dev/).
 
 ## Setup
 
@@ -16,7 +16,7 @@ python -m brv_bench --help
 | LoCoMo | Long-term conversation memory QA (10 conversations, 272 sessions) | 272 docs | 1982 | [locomo10.json](https://github.com/snap-research/locomo/blob/main/data/locomo10.json) | [download](https://drive.google.com/file/d/1YxlrXgPOcXeEmR2C3I0Px53L_WuVBbBW/view) |
 | LongMemEval | Long-term interactive memory benchmark (ICLR 2025, 6 memory abilities) | 948 docs (oracle) | 500 | [HuggingFace](https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned) | |
 
-## Pipeline
+## Usage
 
 ### 1. Transform dataset
 
@@ -89,7 +89,7 @@ Automatically enabled for datasets with a `justifier_template` (LoCoMo and LongM
 | `--justifier-backend` | `gemini` | `gemini`, `anthropic`, or `openai` |
 | `--justifier-model` | `gemini-2.5-flash` / `claude-sonnet-4-6` / `gpt-4o-2024-08-06` | Model name override (default varies by backend) |
 
-## Ground Truth Format
+#### Ground Truth Format
 
 ```json
 {
