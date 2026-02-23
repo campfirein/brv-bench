@@ -2,6 +2,7 @@
 
 Benchmark suite for evaluating retrieval quality, latency, and diversity of AI agent context systems. Built for [ByteRover](https://www.byterover.dev/).
 
+![image](assets/images/overall.svg)
 ## Setup
 
 ```bash
@@ -118,11 +119,12 @@ Automatically enabled for datasets with a `justifier_template` (LoCoMo and LongM
 
 ## Results on LoCoMo (LLM Judge Accuracy %)
 
-![image](assets/images/leader_board.png)
+![image](assets/images/leaderboard.svg)
 
 | Method | Single-Hop | Multi-Hop | Open Domain | Temporal | Overall |
 |--------|:----------:|:---------:|:-----------:|:--------:|:-------:|
-| **ByteRover** | **97.38** | **91.49** | **89.13** | **96.57** | **95.64** |
+| **ByteRover R2** | **97.38** | **91.49** | **89.13** | **96.57** | **95.64** |
+| **ByteRover R1** | **93.10** | **79.79** | **75.00** | **93.77** | **89.71** |
 | Hindsight (Gemini-3) | 86.17 | 70.83 | 95.12 | 83.80 | 89.61 |
 | Hindsight (OSS-120B) | 76.79 | 62.50 | 93.68 | 79.44 | 85.67 |
 | Hindsight (OSS-20B) | 74.11 | 64.58 | 90.96 | 76.32 | 83.18 |
