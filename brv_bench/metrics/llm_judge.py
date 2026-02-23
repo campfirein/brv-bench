@@ -23,7 +23,9 @@ import hashlib
 import json
 import logging
 import threading
+from collections.abc import Coroutine
 from pathlib import Path
+from typing import Any
 
 from brv_bench.metrics._judge.client import JudgeClient, JudgeVerdict
 from brv_bench.metrics._judge.prompts import (
@@ -255,7 +257,10 @@ class LLMJudge(Metric):
         self._loop_thread = thread
         return loop
 
-    def _run_async(self, coro: object) -> dict[str, JudgeVerdict]:
+    def _run_async(
+        self,
+        coro: Coroutine[Any, Any, dict[str, JudgeVerdict]],
+    ) -> dict[str, JudgeVerdict]:
         """Run an async coroutine from synchronous code.
 
         Uses a persistent event loop in a dedicated background thread
@@ -263,5 +268,5 @@ class LLMJudge(Metric):
         already-running loop (which is the case in ``evaluate()``).
         """
         loop = self._ensure_loop()
-        future = asyncio.run_coroutine_threadsafe(coro, loop)  # type: ignore[arg-type]
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
         return future.result()

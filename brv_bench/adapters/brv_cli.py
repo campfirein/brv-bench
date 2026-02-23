@@ -73,8 +73,7 @@ class BrvCliAdapter(RetrievalAdapter):
         return False
 
     async def setup(self) -> None:
-        """Verify brv CLI is available."""
-        # await self._verify_brv()
+        """No-op — brv availability is verified lazily on first query."""
 
     async def query(self, query: str, limit: int) -> QueryExecution:
         """Run a query against the brv context tree.
@@ -99,7 +98,10 @@ class BrvCliAdapter(RetrievalAdapter):
 
         start = time.perf_counter()
         _, stdout = await self._run_brv(
-            "query", formatted, "--format", "json",
+            "query",
+            formatted,
+            "--format",
+            "json",
         )
         duration_ms = (time.perf_counter() - start) * 1000
 
@@ -171,7 +173,9 @@ class BrvCliAdapter(RetrievalAdapter):
     async def _verify_brv(self) -> None:
         """Check that brv CLI is on PATH and a .brv/ project exists."""
         returncode, _ = await self._run_brv(
-            "status", "-f", "json",
+            "status",
+            "-f",
+            "json",
         )
         if returncode != 0:
             raise RuntimeError(
@@ -182,7 +186,8 @@ class BrvCliAdapter(RetrievalAdapter):
     async def _run_brv(self, *args: str) -> tuple[int, str]:
         """Run a brv CLI command and return (returncode, stdout)."""
         proc = await asyncio.create_subprocess_exec(
-            "brv", *args,
+            "brv",
+            *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -273,7 +278,8 @@ def _extract_details(
             # or "Session 26, Date: ..." — ignore any suffix after the number.
             session_m = re.match(r"session[_\s]+(\d+)", raw, re.IGNORECASE)
             topic = (
-                f"session_{session_m.group(1)}" if session_m
+                f"session_{session_m.group(1)}"
+                if session_m
                 else raw.lower().replace(" ", "_")
             )
             if topic in valid_topics:
@@ -282,7 +288,7 @@ def _extract_details(
             # Keep blocks without a recognisable header (e.g. preamble).
             filtered.append(block)
 
-    return "\n\n---\n\n".join(filtered) if filtered else details
+    return "\n\n---\n\n".join(filtered)
 
 
 def _extract_doc_ids(text: str, *, source: str | None = None) -> list[str]:

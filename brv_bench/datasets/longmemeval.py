@@ -32,15 +32,6 @@ from brv_bench.types import (
     PromptConfig,
 )
 
-CATEGORY_MAP: dict[str, str] = {
-    "single-session-user": "single-session-user",
-    "single-session-assistant": "single-session-assistant",
-    "single-session-preference": "single-session-preference",
-    "temporal-reasoning": "temporal-reasoning",
-    "knowledge-update": "knowledge-update",
-    "multi-session": "multi-session",
-}
-
 
 def transform(raw_path: Path) -> BenchmarkDataset:
     """Transform LongMemEval JSON into BenchmarkDataset.
@@ -131,10 +122,7 @@ def _build_entries(raw_data: list[dict]) -> list[GroundTruthEntry]:
     entries: list[GroundTruthEntry] = []
 
     for item in raw_data:
-        category = CATEGORY_MAP.get(
-            item["question_type"],
-            item["question_type"],
-        )
+        category = item["question_type"]
 
         # Build lookup: original session_id → session_N label
         sid_to_label = {

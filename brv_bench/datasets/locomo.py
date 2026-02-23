@@ -91,7 +91,7 @@ def _build_corpus(
     corpus: list[CorpusDocument] = []
 
     for key, value in conversation.items():
-        if not isinstance(value, list):
+        if not isinstance(value, list) or not key.startswith("session_"):
             continue
         session_num = int(key.replace("session_", ""))
         doc_id = f"session_{session_num}"

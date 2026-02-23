@@ -118,9 +118,11 @@ Automatically enabled for datasets with a `justifier_template` (LoCoMo and LongM
 
 ## Results on LoCoMo (LLM Judge Accuracy %)
 
+![image](assets/images/leader_board.png)
+
 | Method | Single-Hop | Multi-Hop | Open Domain | Temporal | Overall |
 |--------|:----------:|:---------:|:-----------:|:--------:|:-------:|
-| **ByteRover** | **97.4** | **91.5** | **95.1** | **96.6** | **95.6** |
+| **ByteRover** | **97.38** | **91.49** | **89.13** | **96.57** | **95.64** |
 | Hindsight (Gemini-3) | 86.17 | 70.83 | 95.12 | 83.80 | 89.61 |
 | Hindsight (OSS-120B) | 76.79 | 62.50 | 93.68 | 79.44 | 85.67 |
 | Hindsight (OSS-20B) | 74.11 | 64.58 | 90.96 | 76.32 | 83.18 |

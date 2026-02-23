@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 # Import dataset modules so they self-register their PromptConfigs.
-import brv_bench.datasets.locomo  # noqa: F401
+import brv_bench.datasets.locomo
 import brv_bench.datasets.longmemeval  # noqa: F401
 from brv_bench.adapters.brv_cli import BrvCliAdapter
 from brv_bench.commands.curate import curate
@@ -172,7 +172,7 @@ def load_dataset(path: Path) -> BenchmarkDataset:
             category=e.get("category", "unspecified"),
             expected_answer=e.get("expected_answer"),
         )
-        for e in data["entries"]
+        for e in data.get("entries", [])
     )
     return BenchmarkDataset(name=data["name"], corpus=corpus, entries=entries)
 
@@ -222,11 +222,9 @@ async def main(argv: list[str] | None = None) -> int:
         justifier = None
         if prompt_config.justifier_template:
             from brv_bench.adapters.justifier import AnswerJustifier
-            from brv_bench.metrics._judge.client import (
-                create_judge_client as _create_client,
-            )
+            from brv_bench.metrics._judge.client import create_judge_client
 
-            justifier_client = _create_client(
+            justifier_client = create_judge_client(
                 backend=args.justifier_backend,
                 model=args.justifier_model,
             )
@@ -265,8 +263,6 @@ async def main(argv: list[str] | None = None) -> int:
         print(f"Summary saved to {output_path.with_suffix('.txt')}")
 
         return 0
-
-    return 0
 
 
 # =============================================================================

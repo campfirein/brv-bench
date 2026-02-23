@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import textwrap
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -539,18 +538,23 @@ class TestAnthropicJudgeClient:
             with pytest.raises(ValueError, match="API key"):
                 AnthropicJudgeClient(api_key=None)
 
+    def _make_stream_mock(self, text: str) -> MagicMock:
+        """Return a mock async context manager for messages.stream()."""
+        mock_message = MagicMock()
+        mock_message.content = [MagicMock(type="text", text=text)]
+        mock_stream = AsyncMock()
+        mock_stream.get_final_message = AsyncMock(return_value=mock_message)
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_cm.__aexit__ = AsyncMock(return_value=False)
+        return mock_cm
+
     def test_sends_correct_params(self, monkeypatch: pytest.MonkeyPatch):
         mock_mod = MagicMock()
         mock_async_client = MagicMock()
         mock_mod.AsyncAnthropic.return_value = mock_async_client
-
-        # Simulate response
-        mock_response = MagicMock()
-        mock_response.content = [
-            MagicMock(text='{"reasoning": "ok", "verdict": "correct"}')
-        ]
-        mock_async_client.messages.create = AsyncMock(
-            return_value=mock_response
+        mock_async_client.messages.stream.return_value = (
+            self._make_stream_mock('{"reasoning": "ok", "verdict": "correct"}')
         )
 
         with patch.dict("sys.modules", {"anthropic": mock_mod}):
@@ -560,10 +564,12 @@ class TestAnthropicJudgeClient:
 
         verdict = asyncio.run(client.judge("q1", "judge this"))
 
-        mock_async_client.messages.create.assert_called_once_with(
-            model="claude-sonnet-4-5-20250929",
-            max_tokens=1024,
-            temperature=0.0,
+        # Default model is claude-sonnet-4-6 → adaptive thinking mode.
+        mock_async_client.messages.stream.assert_called_once_with(
+            model="claude-sonnet-4-6",
+            max_tokens=8192,
+            thinking={"type": "adaptive"},
+            output_config={"effort": "low"},
             messages=[{"role": "user", "content": "judge this"}],
         )
         assert verdict.is_correct is True
@@ -573,11 +579,8 @@ class TestAnthropicJudgeClient:
         mock_mod = MagicMock()
         mock_async_client = MagicMock()
         mock_mod.AsyncAnthropic.return_value = mock_async_client
-
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="raw response text")]
-        mock_async_client.messages.create = AsyncMock(
-            return_value=mock_response
+        mock_async_client.messages.stream.return_value = (
+            self._make_stream_mock("raw response text")
         )
 
         with patch.dict("sys.modules", {"anthropic": mock_mod}):
@@ -587,10 +590,11 @@ class TestAnthropicJudgeClient:
 
         result = asyncio.run(client.raw_call("test prompt", max_tokens=100))
         assert result == "raw response text"
-        mock_async_client.messages.create.assert_called_once_with(
-            model="claude-sonnet-4-5-20250929",
+        mock_async_client.messages.stream.assert_called_once_with(
+            model="claude-sonnet-4-6",
             max_tokens=100,
-            temperature=0.0,
+            thinking={"type": "adaptive"},
+            output_config={"effort": "low"},
             messages=[{"role": "user", "content": "test prompt"}],
         )
 
@@ -634,7 +638,7 @@ class TestOpenAIJudgeClient:
 
         mock_async_client.chat.completions.create.assert_called_once_with(
             model="gpt-4o-2024-08-06",
-            max_tokens=1024,
+            max_tokens=8192,
             temperature=0.0,
             messages=[{"role": "user", "content": "judge this"}],
         )
@@ -709,7 +713,8 @@ class TestGeminiJudgeClient:
             contents="judge this",
             config={
                 "temperature": 0.0,
-                "max_output_tokens": 1024,
+                "max_output_tokens": 8192,
+                "thinking_config": {"thinking_budget": 0},
             },
         )
         assert verdict.is_correct is True
@@ -744,6 +749,7 @@ class TestGeminiJudgeClient:
             config={
                 "temperature": 0.0,
                 "max_output_tokens": 100,
+                "thinking_config": {"thinking_budget": 0},
             },
         )
 

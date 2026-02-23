@@ -4,8 +4,6 @@ import asyncio
 import json
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from brv_bench.adapters.brv_cli import (
     BrvCliAdapter,
     _extract_details,
@@ -13,7 +11,6 @@ from brv_bench.adapters.brv_cli import (
     _extract_source_from_query,
 )
 from brv_bench.types import PromptConfig
-
 
 # ----------------------------------------------------------------
 # Fixtures
@@ -38,12 +35,14 @@ def _mock_proc(returncode: int = 0, stdout: str = "") -> AsyncMock:
 
 def _query_json(result_text: str) -> str:
     """Build a brv query JSON response with markdown content."""
-    return json.dumps({
-        "command": "query",
-        "data": {"result": result_text, "status": "completed"},
-        "success": True,
-        "timestamp": "2024-01-01T00:00:00Z",
-    })
+    return json.dumps(
+        {
+            "command": "query",
+            "data": {"result": result_text, "status": "completed"},
+            "success": True,
+            "timestamp": "2024-01-01T00:00:00Z",
+        }
+    )
 
 
 def _markdown_response(
@@ -66,24 +65,10 @@ def _markdown_response(
 
 
 class TestSetup:
-    def test_verifies_brv_exists(self):
-        with patch("brv_bench.adapters.brv_cli.asyncio") as mock_aio:
-            mock_aio.create_subprocess_exec = AsyncMock(
-                return_value=_mock_proc(0, '{"success":true}'),
-            )
-            adapter = BrvCliAdapter(PROMPT_CONFIG)
-            asyncio.run(adapter.setup())
-            call_args = mock_aio.create_subprocess_exec.call_args
-            assert call_args[0][:4] == ("brv", "status", "-f", "json")
-
-    def test_fails_without_brv(self):
-        with patch("brv_bench.adapters.brv_cli.asyncio") as mock_aio:
-            mock_aio.create_subprocess_exec = AsyncMock(
-                return_value=_mock_proc(1, "not found"),
-            )
-            adapter = BrvCliAdapter(PROMPT_CONFIG)
-            with pytest.raises(RuntimeError, match="brv CLI not available"):
-                asyncio.run(adapter.setup())
+    def test_setup_is_noop(self):
+        """setup() completes without error and makes no subprocess calls."""
+        adapter = BrvCliAdapter(PROMPT_CONFIG)
+        asyncio.run(adapter.setup())  # should not raise
 
 
 # ----------------------------------------------------------------
@@ -120,7 +105,9 @@ class TestExtractDetails:
             "### Session 3\nFacts about session 3\n"
             "**Sources**: x"
         )
-        result = _extract_details(text, valid_topics={"session_1", "session_3"})
+        result = _extract_details(
+            text, valid_topics={"session_1", "session_3"}
+        )
         assert "Facts about session 1" in result
         assert "Facts about session 3" in result
         assert "Facts about session 2" not in result
@@ -138,11 +125,7 @@ class TestExtractDetails:
 
     def test_topic_header_normalisation(self):
         """'### Session 2' normalises to 'session_2' for matching."""
-        text = (
-            "**Details**: \n"
-            "### Session 2\nContent here\n"
-            "**Sources**: x"
-        )
+        text = "**Details**: \n### Session 2\nContent here\n**Sources**: x"
         result = _extract_details(text, valid_topics={"session_2"})
         assert "Content here" in result
 
@@ -271,7 +254,8 @@ class TestParseQueryResponse:
         )
         raw = _query_json(md)
         context, ids = BrvCliAdapter._parse_query_response(
-            raw, "Conversation: conv_26\nWhat happened?",
+            raw,
+            "Conversation: conv_26\nWhat happened?",
         )
         assert context == "Key facts about session"
         assert ids == ["session_1"]
@@ -288,7 +272,8 @@ class TestParseQueryResponse:
         )
         raw = _query_json(md)
         context, ids = BrvCliAdapter._parse_query_response(
-            raw, "Conversation: conv_26\nq",
+            raw,
+            "Conversation: conv_26\nq",
         )
         assert ids == ["session_1"]
         assert "Correct domain facts" in context
@@ -413,7 +398,8 @@ class TestQuery:
             result = asyncio.run(adapter.query(query, 10))
             assert result.answer == "Concise answer"
             mock_justifier.justify.assert_called_once_with(
-                query, "Key facts here",
+                query,
+                "Key facts here",
             )
 
     def test_timing_is_positive(self):
