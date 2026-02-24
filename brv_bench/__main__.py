@@ -185,7 +185,7 @@ async def main(argv: list[str] | None = None) -> int:
         dataset = load_dataset(args.ground_truth)
         prompt_config = get_prompt_config(dataset.name)
         summary = await curate(dataset.corpus, prompt_config)
-        print(f"Curated {summary.succeeded}/{summary.total} documents.")
+        print(f"\nCurated {summary.succeeded}/{summary.total} documents.")
         if summary.failed > 0:
             for r in summary.results:
                 if not r.success:
@@ -255,7 +255,7 @@ async def main(argv: list[str] | None = None) -> int:
             output_path=output_path,
         )
 
-        print(format_report(report))
+        print("\n" + format_report(report))
 
         save_summary(report, output_path.with_suffix(".txt"))
 

@@ -13,15 +13,20 @@ _DECIMAL_METRICS = {"mrr", "ndcg", "llm-judge"}
 _PRIMARY_IDS: set[str] = {m.id for m in primary_metrics()}
 
 
-def _format_value(m: MetricResult) -> str:
+def _format_value(m: MetricResult, query_count: int | None = None) -> str:
     """Format a single metric value for display."""
     if any(k in m.name.lower() for k in _DECIMAL_METRICS):
-        return f"{m.value:.2f}"
+        base = f"{m.value:.2f}"
+        if "llm-judge" in m.name.lower() and query_count is not None:
+            correct = round(m.value * query_count)
+            return f"{base} ({correct}/{query_count})"
+        return base
     return f"{m.value:.1%}"
 
 
 def _format_quality_section(
     metrics: tuple[MetricResult, ...] | list[MetricResult],
+    query_count: int | None = None,
 ) -> list[str]:
     """Render quality metrics as label/value rows."""
     quality = [m for m in metrics if m.percentiles is None]
@@ -30,7 +35,7 @@ def _format_quality_section(
     lines: list[str] = []
     max_lbl = max(len(m.label) for m in quality)
     for m in quality:
-        lines.append(f"  {m.label:<{max_lbl}}  {_format_value(m):>10}")
+        lines.append(f"  {m.label:<{max_lbl}}  {_format_value(m, query_count):>10}")
     return lines
 
 
@@ -65,6 +70,9 @@ def format_report(report: BenchmarkReport) -> str:
     SEP = "=" * W
     THIN = "-" * W
 
+    elapsed_s = report.duration_ms / 1000
+    duration_str = f"{elapsed_s / 60:.1f}min" if elapsed_s >= 60 else f"{elapsed_s:.1f}s"
+
     lines: list[str] = [SEP]
     lines.append(f"  {'Dataset:':<15}{report.name}")
     lines.append(f"  {'Memory System:':<15}{report.memory_system}")
@@ -72,6 +80,7 @@ def format_report(report: BenchmarkReport) -> str:
         f"  {'Context tree:':<15}{report.context_tree_docs} documents"
     )
     lines.append(f"  {'Queries:':<15}{report.query_count}")
+    lines.append(f"  {'Duration:':<15}{duration_str}")
     lines.append(THIN)
 
     # --- Split quality metrics into primary / diagnostic ---
@@ -83,13 +92,13 @@ def format_report(report: BenchmarkReport) -> str:
         lines.append("")
         lines.append("  Primary Metrics:")
         lines.append("  " + "-" * 40)
-        lines.extend(_format_quality_section(primary))
+        lines.extend(_format_quality_section(primary, report.query_count))
 
     if diagnostic:
         lines.append("")
         lines.append("  Diagnostic Metrics:")
         lines.append("  " + "-" * 40)
-        lines.extend(_format_quality_section(diagnostic))
+        lines.extend(_format_quality_section(diagnostic, report.query_count))
 
     # Latency metrics
     lines.extend(_format_latency_section(report.metrics))
@@ -108,10 +117,10 @@ def format_report(report: BenchmarkReport) -> str:
             cat_diag = [m for m in cat_quality if m.name not in _PRIMARY_IDS]
             if cat_primary:
                 lines.append("  " + "-" * 40)
-                lines.extend(_format_quality_section(cat_primary))
+                lines.extend(_format_quality_section(cat_primary, cr.query_count))
             if cat_diag:
-                lines.append("  " + "-" * 28)
-                lines.extend(_format_quality_section(cat_diag))
+                lines.append("  " + "-" * 40)
+                lines.extend(_format_quality_section(cat_diag, cr.query_count))
 
     lines.append(SEP)
     return "\n".join(lines)

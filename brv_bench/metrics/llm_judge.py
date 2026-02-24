@@ -27,6 +27,8 @@ from collections.abc import Coroutine
 from pathlib import Path
 from typing import Any
 
+from tqdm import tqdm
+
 from brv_bench.metrics._judge.client import JudgeClient, JudgeVerdict
 from brv_bench.metrics._judge.prompts import (
     get_judge_prompt,
@@ -236,7 +238,11 @@ class LLMJudge(Metric):
                 return key, verdict
 
         tasks = [_judge_one(qe, gt) for qe, gt in pairs]
-        results = await asyncio.gather(*tasks)
+        results = []
+        with tqdm(total=len(tasks), desc="Judging", unit="query") as pbar:
+            for coro in asyncio.as_completed(tasks):
+                results.append(await coro)
+                pbar.update(1)
         return dict(results)
 
     # ── Sync / Async bridge ──────────────────────────────────────
