@@ -14,6 +14,19 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+from brv_bench.metrics._judge.constants import (
+    ANTHROPIC_ADAPTIVE_EFFORT,
+    ANTHROPIC_ADAPTIVE_MODELS,
+    ANTHROPIC_DEFAULT_MODEL,
+    ANTHROPIC_ENABLED_PREFIXES,
+    ANTHROPIC_THINKING_BUDGET,
+    GEMINI_DEFAULT_MODEL,
+    GEMINI_THINKING_BUDGET_DISABLED,
+    JUDGE_MAX_TOKENS,
+    OPENAI_DEFAULT_MODEL,
+    RAW_CALL_DEFAULT_MAX_TOKENS,
+)
+
 # ── Verdict ──────────────────────────────────────────────────────────
 
 
@@ -64,7 +77,9 @@ class JudgeClient(ABC):
     """Abstract async LLM judge client."""
 
     @abstractmethod
-    async def raw_call(self, prompt: str, *, max_tokens: int = 512) -> str:
+    async def raw_call(
+        self, prompt: str, *, max_tokens: int = RAW_CALL_DEFAULT_MAX_TOKENS
+    ) -> str:
         """Send *prompt* to the LLM and return raw text.
 
         Args:
@@ -79,33 +94,18 @@ class JudgeClient(ABC):
             query: The original question (used as key in the verdict).
             prompt: Fully formatted judge prompt.
         """
-        raw = await self.raw_call(prompt, max_tokens=8192)
+        raw = await self.raw_call(prompt, max_tokens=JUDGE_MAX_TOKENS)
         return parse_verdict(query, raw)
 
 
 # ── Anthropic ────────────────────────────────────────────────────────
 
-# Adaptive thinking: Opus 4.6 and Sonnet 4.6.
-# budget_tokens / type:"enabled" is deprecated on both.
-# Effort level is a separate output_config parameter — NOT inside thinking.
-# Supported effort levels: low | medium | high | max (max: Opus 4.6 only).
-_ANTHROPIC_ADAPTIVE_MODELS = ("claude-opus-4-6", "claude-sonnet-4-6")
-
-# All other Claude 3.7+ / Claude 4 models use manual extended thinking.
-# (Haiku 4.5, Sonnet 4.5, Opus 4.5, Opus 4.1, Sonnet 4.0, Opus 4.0, Sonnet 3.7)
-_ANTHROPIC_ENABLED_PREFIXES = (
-    "claude-3-7",
-    "claude-haiku-4",
-    "claude-sonnet-4",   # matches 4.0 / 4.5; 4.6 caught above
-    "claude-opus-4",     # matches 4.0 / 4.1 / 4.5; 4.6 caught above
-)
-
 
 def _anthropic_thinking_mode(model: str) -> str | None:
     """Return 'adaptive' (Opus/Sonnet 4.6), 'enabled' (other 4/3.7), or None."""
-    if any(p in model for p in _ANTHROPIC_ADAPTIVE_MODELS):
+    if any(p in model for p in ANTHROPIC_ADAPTIVE_MODELS):
         return "adaptive"
-    if any(p in model for p in _ANTHROPIC_ENABLED_PREFIXES):
+    if any(p in model for p in ANTHROPIC_ENABLED_PREFIXES):
         return "enabled"
     return None
 
@@ -115,11 +115,11 @@ class AnthropicJudgeClient(JudgeClient):
 
     def __init__(
         self,
-        model: str = "claude-sonnet-4-6",
+        model: str = ANTHROPIC_DEFAULT_MODEL,
         api_key: str | None = None,
     ) -> None:
         try:
-            import anthropic  # noqa: F811
+            import anthropic
         except ImportError as exc:
             raise ImportError(
                 "The 'anthropic' package is required for the Anthropic "
@@ -137,7 +137,9 @@ class AnthropicJudgeClient(JudgeClient):
         self._client = anthropic.AsyncAnthropic(api_key=resolved_key)
         self._model = model
 
-    async def raw_call(self, prompt: str, *, max_tokens: int = 512) -> str:
+    async def raw_call(
+        self, prompt: str, *, max_tokens: int = RAW_CALL_DEFAULT_MAX_TOKENS
+    ) -> str:
         kwargs: dict = {
             "model": self._model,
             "max_tokens": max_tokens,
@@ -151,9 +153,12 @@ class AnthropicJudgeClient(JudgeClient):
         mode = _anthropic_thinking_mode(self._model)
         if mode == "adaptive":
             kwargs["thinking"] = {"type": "adaptive"}
-            kwargs["output_config"] = {"effort": "low"}
+            kwargs["output_config"] = {"effort": ANTHROPIC_ADAPTIVE_EFFORT}
         elif mode == "enabled":
-            kwargs["thinking"] = {"type": "enabled", "budget_tokens": 1024}
+            kwargs["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": ANTHROPIC_THINKING_BUDGET,
+            }
         else:
             kwargs["temperature"] = 0.0
 
@@ -220,11 +225,11 @@ class OpenAIJudgeClient(JudgeClient):
 
     def __init__(
         self,
-        model: str = "gpt-4o-2024-08-06",
+        model: str = OPENAI_DEFAULT_MODEL,
         api_key: str | None = None,
     ) -> None:
         try:
-            import openai  # noqa: F811
+            import openai
         except ImportError as exc:
             raise ImportError(
                 "The 'openai' package is required for the OpenAI "
@@ -242,7 +247,9 @@ class OpenAIJudgeClient(JudgeClient):
         self._client = openai.AsyncOpenAI(api_key=resolved_key)
         self._model = model
 
-    async def raw_call(self, prompt: str, *, max_tokens: int = 512) -> str:
+    async def raw_call(
+        self, prompt: str, *, max_tokens: int = RAW_CALL_DEFAULT_MAX_TOKENS
+    ) -> str:
         kwargs: dict = {
             "model": self._model,
             "messages": [{"role": "user", "content": prompt}],
@@ -270,11 +277,11 @@ class GeminiJudgeClient(JudgeClient):
 
     def __init__(
         self,
-        model: str = "gemini-2.5-flash",
+        model: str = GEMINI_DEFAULT_MODEL,
         api_key: str | None = None,
     ) -> None:
         try:
-            from google import genai  # noqa: F811
+            from google import genai
         except ImportError as exc:
             raise ImportError(
                 "The 'google-genai' package is required for the Gemini "
@@ -292,7 +299,9 @@ class GeminiJudgeClient(JudgeClient):
         self._client = genai.Client(api_key=resolved_key)
         self._model = model
 
-    async def raw_call(self, prompt: str, *, max_tokens: int = 512) -> str:
+    async def raw_call(
+        self, prompt: str, *, max_tokens: int = RAW_CALL_DEFAULT_MAX_TOKENS
+    ) -> str:
         config: dict = {
             "temperature": 0.0,
             "max_output_tokens": max_tokens,
@@ -303,7 +312,9 @@ class GeminiJudgeClient(JudgeClient):
         if "gemini-3" in self._model:
             config["thinking_config"] = {"thinking_level": "low"}
         else:
-            config["thinking_config"] = {"thinking_budget": 0}
+            config["thinking_config"] = {
+                "thinking_budget": GEMINI_THINKING_BUDGET_DISABLED
+            }
 
         response = await self._client.aio.models.generate_content(
             model=self._model,

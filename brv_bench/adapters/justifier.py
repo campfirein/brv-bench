@@ -7,6 +7,7 @@ a concise answer suitable for LLM-Judge evaluation.
 from __future__ import annotations
 
 from brv_bench.metrics._judge.client import JudgeClient
+from brv_bench.metrics._judge.constants import JUSTIFIER_MAX_TOKENS
 
 
 class AnswerJustifier:
@@ -31,5 +32,7 @@ class AnswerJustifier:
             Stripped LLM response text.
         """
         prompt = self._template.format(question=question, context=context)
-        raw = await self._client.raw_call(prompt, max_tokens=32768)
+        raw = await self._client.raw_call(
+            prompt, max_tokens=JUSTIFIER_MAX_TOKENS
+        )
         return raw.strip()
