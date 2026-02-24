@@ -1,6 +1,6 @@
-# brv-bench
+<p align="center"><img src="assets/images/logo.png" alt="ByteRover Logo" width="500" /></p>
 
-Benchmark suite for evaluating retrieval quality, latency, and diversity of AI agent context systems. Built for [ByteRover](https://www.byterover.dev/).
+Benchmark suite for evaluating retrieval quality, latency, and diversity of AI agent context systems. Powered for ByteRover, engineered by [ByteRover](https://www.byterover.dev/).
 
 ## Overall Accuracy
 ![image](assets/images/overall.svg)
