@@ -22,29 +22,37 @@ python -m brv_bench --help
 
 ### 1. Transform dataset
 
-Pre-transformed datasets are provided in `assets/` (`locomo.json`, `longmemeval_s.json`) — you can skip this step and pass those files directly to `curate`/`evaluate`.
+Pre-transformed datasets are provided in `assets/` (`locomo_sample.json`, `longmemeval_s.json`) — you can skip this step and pass those files directly to `curate`/`evaluate`.
 
 To transform from raw sources:
 
 ```bash
-# LoCoMo
-python scripts/transform_locomo.py locomo10.json output/locomo_benchmark.json
+# LoCoMo → produces assets/sample_data/locomo.json (already provided)
+python scripts/transform_locomo.py locomo10.json assets/sample_data/locomo.json
 
 # LongMemEval (three variants: oracle / s_cleaned ~40 sessions / m_cleaned ~500 sessions)
-python scripts/transform_longmemeval.py longmemeval_oracle.json output/longmemeval_benchmark.json
+# → produces assets/longmemeval_s.json (already provided)
+python scripts/transform_longmemeval.py longmemeval_oracle.json assets/longmemeval_s.json
 ```
 
 ### 2. Curate (populate context tree)
 
 ```bash
-python -m brv_bench curate --ground-truth assets/locomo.json
+python -m brv_bench curate --ground-truth assets/sample_data/locomo.json
 ```
 
 ### 3. Evaluate
 
 ```bash
-python -m brv_bench evaluate --ground-truth output/locomo_benchmark.json
+export GEMINI_API_KEY="your-api-key"
+
+python -m brv_bench evaluate \
+  --ground-truth assets/sample_data/locomo.json \
+  --judge \
+  --judge-cache report/judge_cache_locomo_gemini.json
 ```
+
+The justifier is automatically enabled for LoCoMo and LongMemEval (no extra flag needed). See [LLM-as-Judge](#llm-as-judge) and [Justifier](#justifier) below for detailed configuration options.
 
 Results are saved to `report/{yyyymmdd}_{dataset}_{memory_system}.json/.txt`. Per-query results are written incrementally (crash-safe).
 
@@ -57,8 +65,8 @@ pip install 'brv-bench[judge]'
 export GEMINI_API_KEY="your-api-key"   # or ANTHROPIC_API_KEY / OPENAI_API_KEY
 
 python -m brv_bench evaluate \
-  --ground-truth output/locomo_benchmark.json \
-  --judge --judge-cache report/judge_cache.json
+  --ground-truth assets/sample_data/locomo.json \
+  --judge --judge-cache report/judge_cache_locomo_gemini.json
 ```
 
 | Flag | Default | Description |
@@ -75,9 +83,9 @@ Scopes the context tree to one question at a time to prevent cross-question cont
 
 ```bash
 python -m brv_bench evaluate \
-  --ground-truth output/longmemeval_benchmark.json \
+  --ground-truth assets/longmemeval_s.json \
   --context-tree-source path/to/full-context-tree \
-  --judge --judge-cache report/judge_cache.json
+  --judge --judge-cache report/judge_cache_longmemeval_gemini.json
 ```
 
 Source layout: `{context-tree-source}/{question_id}/{session_id}/key_facts.md`
