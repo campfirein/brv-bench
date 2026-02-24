@@ -2,6 +2,7 @@
 
 Benchmark suite for evaluating retrieval quality, latency, and diversity of AI agent context systems. Built for [ByteRover](https://www.byterover.dev/).
 
+## Overall Accuracy
 ![image](assets/images/overall.svg)
 ## Setup
 
