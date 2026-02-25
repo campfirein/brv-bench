@@ -1,12 +1,13 @@
 """Answer justifier — LLM-based answer synthesis from retrieved context.
 
 Takes raw context (key facts) retrieved by ``brv query`` and produces
-a concise answer suitable for F1/EM/LLM-Judge evaluation metrics.
+a concise answer suitable for LLM-Judge evaluation.
 """
 
 from __future__ import annotations
 
 from brv_bench.metrics._judge.client import JudgeClient
+from brv_bench.metrics._judge.constants import JUSTIFIER_MAX_TOKENS
 
 
 class AnswerJustifier:
@@ -31,5 +32,7 @@ class AnswerJustifier:
             Stripped LLM response text.
         """
         prompt = self._template.format(question=question, context=context)
-        raw = await self._client.raw_call(prompt, max_tokens=1024)
+        raw = await self._client.raw_call(
+            prompt, max_tokens=JUSTIFIER_MAX_TOKENS
+        )
         return raw.strip()

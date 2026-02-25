@@ -3,14 +3,11 @@
 import pytest
 
 from brv_bench.metrics import (
-    ExactMatch,
-    F1Score,
     LatencyMetric,
     MeanReciprocalRank,
     NDCGAtK,
     PrecisionAtK,
     RecallAtK,
-    ResultDiversity,
     default_metrics,
     diagnostic_metrics,
     primary_metrics,
@@ -237,80 +234,6 @@ class TestNDCGAtK:
 
 
 # ----------------------------------------------------------------
-# ResultDiversity
-# ----------------------------------------------------------------
-
-
-class TestResultDiversity:
-    def test_identical_excerpts(self):
-        results = tuple(
-            SearchResult(
-                path=f"{i}.md",
-                title=f"{i}",
-                score=1.0,
-                excerpt="same words here",
-            )
-            for i in range(3)
-        )
-        qe = QueryExecution(
-            query="q",
-            results=results,
-            total_found=3,
-            duration_ms=1.0,
-        )
-        pairs = [(qe, _gt("q", []))]
-        [result] = ResultDiversity(3).compute(pairs)
-        assert result.value == 0.0
-
-    def test_completely_different_excerpts(self):
-        results = (
-            SearchResult(
-                path="1.md",
-                title="1",
-                score=1.0,
-                excerpt="alpha beta gamma",
-            ),
-            SearchResult(
-                path="2.md",
-                title="2",
-                score=0.9,
-                excerpt="delta epsilon zeta",
-            ),
-        )
-        qe = QueryExecution(
-            query="q",
-            results=results,
-            total_found=2,
-            duration_ms=1.0,
-        )
-        pairs = [(qe, _gt("q", []))]
-        [result] = ResultDiversity(5).compute(pairs)
-        assert result.value == 1.0
-
-    def test_single_result(self):
-        qe = QueryExecution(
-            query="q",
-            results=(
-                SearchResult(
-                    path="1.md",
-                    title="1",
-                    score=1.0,
-                    excerpt="text",
-                ),
-            ),
-            total_found=1,
-            duration_ms=1.0,
-        )
-        pairs = [(qe, _gt("q", []))]
-        [result] = ResultDiversity(5).compute(pairs)
-        assert result.value == 1.0
-
-    def test_empty_pairs(self):
-        [result] = ResultDiversity(5).compute([])
-        assert result.value == 0.0
-
-
-# ----------------------------------------------------------------
 # LatencyMetric
 # ----------------------------------------------------------------
 
@@ -341,166 +264,6 @@ class TestLatencyMetric:
 
 
 # ----------------------------------------------------------------
-# F1Score
-# ----------------------------------------------------------------
-
-
-class TestF1Score:
-    def test_perfect_match(self):
-        pairs = [
-            (
-                _qe("q", [], answer="the cat sat on the mat"),
-                _gt("q", [], expected_answer="the cat sat on the mat"),
-            )
-        ]
-        [result] = F1Score().compute(pairs)
-        assert result.value == 1.0
-
-    def test_zero_match(self):
-        pairs = [
-            (
-                _qe("q", [], answer="alpha beta"),
-                _gt("q", [], expected_answer="gamma delta"),
-            )
-        ]
-        [result] = F1Score().compute(pairs)
-        assert result.value == 0.0
-
-    def test_partial_overlap(self):
-        pairs = [
-            (
-                _qe("q", [], answer="cat dog"),
-                _gt("q", [], expected_answer="cat bird"),
-            )
-        ]
-        [result] = F1Score().compute(pairs)
-        # common=1 (cat), pred=2, gold=2 → P=0.5 R=0.5 → F1=0.5
-        assert result.value == pytest.approx(0.5)
-
-    def test_normalization(self):
-        pairs = [
-            (
-                _qe("q", [], answer="The Cat!"),
-                _gt("q", [], expected_answer="a cat"),
-            )
-        ]
-        [result] = F1Score().compute(pairs)
-        assert result.value == 1.0
-
-    def test_skips_none_answer(self):
-        pairs = [
-            (_qe("q", []), _gt("q", [], expected_answer="answer")),
-        ]
-        [result] = F1Score().compute(pairs)
-        assert result.value == 0.0
-
-    def test_skips_none_expected(self):
-        pairs = [
-            (_qe("q", [], answer="answer"), _gt("q", [])),
-        ]
-        [result] = F1Score().compute(pairs)
-        assert result.value == 0.0
-
-    def test_empty_pairs(self):
-        [result] = F1Score().compute([])
-        assert result.value == 0.0
-
-    def test_averaging(self):
-        pairs = [
-            (
-                _qe("q1", [], answer="cat"),
-                _gt("q1", [], expected_answer="cat"),
-            ),
-            (
-                _qe("q2", [], answer="alpha"),
-                _gt("q2", [], expected_answer="beta"),
-            ),
-        ]
-        [result] = F1Score().compute(pairs)
-        # (1.0 + 0.0) / 2
-        assert result.value == pytest.approx(0.5)
-
-
-# ----------------------------------------------------------------
-# ExactMatch
-# ----------------------------------------------------------------
-
-
-class TestExactMatch:
-    def test_perfect_match(self):
-        pairs = [
-            (
-                _qe("q", [], answer="Paris"),
-                _gt("q", [], expected_answer="Paris"),
-            )
-        ]
-        [result] = ExactMatch().compute(pairs)
-        assert result.value == 1.0
-
-    def test_zero_match(self):
-        pairs = [
-            (
-                _qe("q", [], answer="London"),
-                _gt("q", [], expected_answer="Paris"),
-            )
-        ]
-        [result] = ExactMatch().compute(pairs)
-        assert result.value == 0.0
-
-    def test_normalization(self):
-        pairs = [
-            (
-                _qe("q", [], answer="The Paris!"),
-                _gt("q", [], expected_answer="a paris"),
-            )
-        ]
-        [result] = ExactMatch().compute(pairs)
-        assert result.value == 1.0
-
-    def test_partial_is_not_exact(self):
-        pairs = [
-            (
-                _qe("q", [], answer="Paris France"),
-                _gt("q", [], expected_answer="Paris"),
-            )
-        ]
-        [result] = ExactMatch().compute(pairs)
-        assert result.value == 0.0
-
-    def test_skips_none_answer(self):
-        pairs = [
-            (_qe("q", []), _gt("q", [], expected_answer="answer")),
-        ]
-        [result] = ExactMatch().compute(pairs)
-        assert result.value == 0.0
-
-    def test_skips_none_expected(self):
-        pairs = [
-            (_qe("q", [], answer="answer"), _gt("q", [])),
-        ]
-        [result] = ExactMatch().compute(pairs)
-        assert result.value == 0.0
-
-    def test_empty_pairs(self):
-        [result] = ExactMatch().compute([])
-        assert result.value == 0.0
-
-    def test_averaging(self):
-        pairs = [
-            (
-                _qe("q1", [], answer="Paris"),
-                _gt("q1", [], expected_answer="Paris"),
-            ),
-            (
-                _qe("q2", [], answer="London"),
-                _gt("q2", [], expected_answer="Paris"),
-            ),
-        ]
-        [result] = ExactMatch().compute(pairs)
-        assert result.value == pytest.approx(0.5)
-
-
-# ----------------------------------------------------------------
 # default_metrics
 # ----------------------------------------------------------------
 
@@ -516,13 +279,10 @@ class TestDefaultMetrics:
         assert "ndcg@5" in ids
         assert "ndcg@10" in ids
         assert "mrr" in ids
-        assert "diversity@5" in ids
         assert "cold-latency" in ids
-        assert "f1" in ids
-        assert "exact-match" in ids
 
     def test_count(self):
-        assert len(default_metrics()) == 11
+        assert len(default_metrics()) == 8
 
 
 class TestPrimaryMetrics:
@@ -546,15 +306,12 @@ class TestPrimaryMetrics:
 
 
 class TestDiagnosticMetrics:
-    def test_contains_answer_and_diversity_metrics(self):
+    def test_contains_latency_metric(self):
         ids = {m.id for m in diagnostic_metrics()}
-        assert "diversity@5" in ids
         assert "cold-latency" in ids
-        assert "f1" in ids
-        assert "exact-match" in ids
 
     def test_count(self):
-        assert len(diagnostic_metrics()) == 4
+        assert len(diagnostic_metrics()) == 1
 
     def test_default_is_primary_plus_diagnostic(self):
         default_ids = [m.id for m in default_metrics()]

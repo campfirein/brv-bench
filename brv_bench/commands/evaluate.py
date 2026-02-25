@@ -7,12 +7,14 @@ from pathlib import Path
 from tqdm import tqdm
 
 from brv_bench.adapters.base import RetrievalAdapter
+from brv_bench.metrics._judge.client import JudgeVerdict
 from brv_bench.metrics.base import Metric
 from brv_bench.types import (
     BenchmarkDataset,
     BenchmarkReport,
     CategoryResult,
     GroundTruthEntry,
+    MetricResult,
     QueryExecution,
     SearchResult,
 )
@@ -21,10 +23,10 @@ from brv_bench.types import (
 def _pair_to_dict(
     execution: QueryExecution,
     entry: GroundTruthEntry,
-    verdict: object | None = None,
-) -> dict:
+    verdict: JudgeVerdict | None = None,
+) -> dict[str, object]:
     """Serialize a single (execution, ground_truth) pair."""
-    d: dict = {
+    d: dict[str, object] = {
         "query": entry.query,
         "category": entry.category,
         "expected_doc_ids": list(entry.expected_doc_ids),
@@ -119,9 +121,9 @@ def _save_partial(
 def compute_metrics(
     metrics: list[Metric],
     pairs: list[tuple[QueryExecution, GroundTruthEntry]],
-) -> list:
+) -> list[MetricResult]:
     """Run all metrics over the query-execution pairs."""
-    results = []
+    results: list[MetricResult] = []
     for metric in metrics:
         results.extend(metric.compute(pairs))
     return results
@@ -250,8 +252,8 @@ def _save_report(
 
 
 def _metrics_to_dict(
-    metrics: tuple,
-) -> dict:
+    metrics: tuple[MetricResult, ...],
+) -> dict[str, dict[str, str | float]]:
     """Serialize a tuple of MetricResult to a dict keyed by name."""
     return {
         m.name: {

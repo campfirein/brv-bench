@@ -10,8 +10,22 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+
+from brv_bench.metrics._judge.constants import (
+    ANTHROPIC_ADAPTIVE_EFFORT,
+    ANTHROPIC_ADAPTIVE_MODELS,
+    ANTHROPIC_DEFAULT_MODEL,
+    ANTHROPIC_ENABLED_PREFIXES,
+    ANTHROPIC_THINKING_BUDGET,
+    GEMINI_DEFAULT_MODEL,
+    GEMINI_THINKING_BUDGET_DISABLED,
+    JUDGE_MAX_TOKENS,
+    OPENAI_DEFAULT_MODEL,
+    RAW_CALL_DEFAULT_MAX_TOKENS,
+)
 
 # ── Verdict ──────────────────────────────────────────────────────────
 
@@ -33,7 +47,14 @@ def parse_verdict(query: str, raw: str) -> JudgeVerdict:
     malformed response does not crash the entire evaluation run.
     """
     try:
-        data = json.loads(raw)
+        # Strip markdown code fences that some models wrap around JSON output.
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("```", 2)[1]
+            if cleaned.startswith("json"):
+                cleaned = cleaned[4:]
+            cleaned = cleaned.rsplit("```", 1)[0].strip()
+        data = json.loads(cleaned)
         verdict = str(data.get("verdict", "")).lower().strip()
         reasoning = str(data.get("reasoning", ""))
         return JudgeVerdict(
@@ -56,7 +77,9 @@ class JudgeClient(ABC):
     """Abstract async LLM judge client."""
 
     @abstractmethod
-    async def raw_call(self, prompt: str, *, max_tokens: int = 512) -> str:
+    async def raw_call(
+        self, prompt: str, *, max_tokens: int = RAW_CALL_DEFAULT_MAX_TOKENS
+    ) -> str:
         """Send *prompt* to the LLM and return raw text.
 
         Args:
@@ -71,11 +94,20 @@ class JudgeClient(ABC):
             query: The original question (used as key in the verdict).
             prompt: Fully formatted judge prompt.
         """
-        raw = await self.raw_call(prompt, max_tokens=1024)
+        raw = await self.raw_call(prompt, max_tokens=JUDGE_MAX_TOKENS)
         return parse_verdict(query, raw)
 
 
 # ── Anthropic ────────────────────────────────────────────────────────
+
+
+def _anthropic_thinking_mode(model: str) -> str | None:
+    """Return 'adaptive' (Opus/Sonnet 4.6), 'enabled' (other 4/3.7), or None."""
+    if any(p in model for p in ANTHROPIC_ADAPTIVE_MODELS):
+        return "adaptive"
+    if any(p in model for p in ANTHROPIC_ENABLED_PREFIXES):
+        return "enabled"
+    return None
 
 
 class AnthropicJudgeClient(JudgeClient):
@@ -83,11 +115,11 @@ class AnthropicJudgeClient(JudgeClient):
 
     def __init__(
         self,
-        model: str = "claude-sonnet-4-5-20250929",
+        model: str = ANTHROPIC_DEFAULT_MODEL,
         api_key: str | None = None,
     ) -> None:
         try:
-            import anthropic  # noqa: F811
+            import anthropic
         except ImportError as exc:
             raise ImportError(
                 "The 'anthropic' package is required for the Anthropic "
@@ -105,17 +137,87 @@ class AnthropicJudgeClient(JudgeClient):
         self._client = anthropic.AsyncAnthropic(api_key=resolved_key)
         self._model = model
 
-    async def raw_call(self, prompt: str, *, max_tokens: int = 512) -> str:
-        response = await self._client.messages.create(
-            model=self._model,
-            max_tokens=max_tokens,
-            temperature=0.0,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return response.content[0].text
+    async def raw_call(
+        self, prompt: str, *, max_tokens: int = RAW_CALL_DEFAULT_MAX_TOKENS
+    ) -> str:
+        kwargs: dict = {
+            "model": self._model,
+            "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+
+        # Thinking config — temperature must be omitted when thinking is active.
+        # Opus/Sonnet 4.6: adaptive thinking; effort goes in output_config
+        #   (separate top-level param), NOT inside the thinking dict.
+        # Other Claude 4 / 3.7: manual extended thinking with minimum budget.
+        mode = _anthropic_thinking_mode(self._model)
+        if mode == "adaptive":
+            kwargs["thinking"] = {"type": "adaptive"}
+            kwargs["output_config"] = {"effort": ANTHROPIC_ADAPTIVE_EFFORT}
+        elif mode == "enabled":
+            kwargs["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": ANTHROPIC_THINKING_BUDGET,
+            }
+        else:
+            kwargs["temperature"] = 0.0
+
+        # Use streaming to avoid the SDK's 10-minute timeout guard that
+        # triggers when max_tokens is large (e.g. 32 768 for the justifier).
+        async with self._client.messages.stream(**kwargs) as stream:
+            message = await stream.get_final_message()
+        # Response may contain thinking blocks; return the first text block.
+        for block in message.content:
+            if block.type == "text":
+                return block.text
+        return ""
 
 
 # ── OpenAI ───────────────────────────────────────────────────────────
+
+# Both o-series and GPT-5 series are reasoning models in the Chat Completions
+# API and share the same parameter shape:
+#   - max_completion_tokens  (not max_tokens)
+#   - reasoning_effort="..."  (top-level string — NOT nested reasoning object;
+#     the nested reasoning={effort:...} format is the Responses API only)
+#   - no temperature
+#
+# Effort values differ by model:
+#   o-series (o1/o3/o4-mini): low | medium | high   → use "low"
+#   gpt-5 (original):         minimal | low | medium | high → use "minimal"
+#   gpt-5.1 / gpt-5.2 / gpt-5.3 / gpt-5.x-codex*: none | low | medium | high | xhigh → use "none"
+#
+# * Codex models (gpt-5.2-codex, gpt-5.3-codex) currently require the Responses
+#   API, not Chat Completions. They match the gpt-5 prefix but will fail at the
+#   API level if passed here — which is the correct behaviour.
+#
+# Standard models (gpt-4o etc.) use max_tokens + temperature=0.
+
+
+def _openai_model_class(model: str) -> str:
+    """Classify OpenAI model for API parameter selection.
+
+    Returns:
+        'reasoning' — o-series or GPT-5 series (max_completion_tokens + reasoning_effort)
+        'standard'  — everything else (max_tokens + temperature=0)
+    """
+    if model.startswith("gpt-5") or re.match(r"^o\d", model):
+        return "reasoning"
+    return "standard"
+
+
+def _openai_min_effort(model: str) -> str:
+    """Return the lowest reasoning_effort value for a given reasoning model.
+
+    o-series:        "low"     (minimum available; none/minimal not supported)
+    gpt-5 original:  "minimal" (unique to gpt-5 and gpt-5-* variants)
+    gpt-5.1+:        "none"    (gpt-5.1, gpt-5.2, gpt-5.3, gpt-5.x-codex, etc.)
+    """
+    if re.match(r"^o\d", model):  # o-series
+        return "low"
+    if model == "gpt-5" or model.startswith("gpt-5-"):
+        return "minimal"
+    return "none"
 
 
 class OpenAIJudgeClient(JudgeClient):
@@ -123,11 +225,11 @@ class OpenAIJudgeClient(JudgeClient):
 
     def __init__(
         self,
-        model: str = "gpt-4o-2024-08-06",
+        model: str = OPENAI_DEFAULT_MODEL,
         api_key: str | None = None,
     ) -> None:
         try:
-            import openai  # noqa: F811
+            import openai
         except ImportError as exc:
             raise ImportError(
                 "The 'openai' package is required for the OpenAI "
@@ -145,13 +247,25 @@ class OpenAIJudgeClient(JudgeClient):
         self._client = openai.AsyncOpenAI(api_key=resolved_key)
         self._model = model
 
-    async def raw_call(self, prompt: str, *, max_tokens: int = 512) -> str:
-        response = await self._client.chat.completions.create(
-            model=self._model,
-            max_tokens=max_tokens,
-            temperature=0.0,
-            messages=[{"role": "user", "content": prompt}],
-        )
+    async def raw_call(
+        self, prompt: str, *, max_tokens: int = RAW_CALL_DEFAULT_MAX_TOKENS
+    ) -> str:
+        kwargs: dict = {
+            "model": self._model,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+
+        model_class = _openai_model_class(self._model)
+
+        if model_class == "reasoning":
+            # o-series and GPT-5: top-level reasoning_effort string, no temperature.
+            kwargs["max_completion_tokens"] = max_tokens
+            kwargs["reasoning_effort"] = _openai_min_effort(self._model)
+        else:
+            kwargs["max_tokens"] = max_tokens
+            kwargs["temperature"] = 0.0
+
+        response = await self._client.chat.completions.create(**kwargs)
         return response.choices[0].message.content or ""
 
 
@@ -163,11 +277,11 @@ class GeminiJudgeClient(JudgeClient):
 
     def __init__(
         self,
-        model: str = "gemini-2.5-flash",
+        model: str = GEMINI_DEFAULT_MODEL,
         api_key: str | None = None,
     ) -> None:
         try:
-            from google import genai  # noqa: F811
+            from google import genai
         except ImportError as exc:
             raise ImportError(
                 "The 'google-genai' package is required for the Gemini "
@@ -185,7 +299,9 @@ class GeminiJudgeClient(JudgeClient):
         self._client = genai.Client(api_key=resolved_key)
         self._model = model
 
-    async def raw_call(self, prompt: str, *, max_tokens: int = 512) -> str:
+    async def raw_call(
+        self, prompt: str, *, max_tokens: int = RAW_CALL_DEFAULT_MAX_TOKENS
+    ) -> str:
         config: dict = {
             "temperature": 0.0,
             "max_output_tokens": max_tokens,
@@ -194,9 +310,11 @@ class GeminiJudgeClient(JudgeClient):
         # Reduce thinking overhead — judge task is simple classification.
         # Gemini 3 models use thinkingLevel; 2.5 models use thinkingBudget.
         if "gemini-3" in self._model:
-            config["thinking_config"] = {"thinking_level": "minimal"}
+            config["thinking_config"] = {"thinking_level": "low"}
         else:
-            config["thinking_config"] = {"thinking_budget": 0}
+            config["thinking_config"] = {
+                "thinking_budget": GEMINI_THINKING_BUDGET_DISABLED
+            }
 
         response = await self._client.aio.models.generate_content(
             model=self._model,

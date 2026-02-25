@@ -91,7 +91,7 @@ def _build_corpus(
     corpus: list[CorpusDocument] = []
 
     for key, value in conversation.items():
-        if not isinstance(value, list):
+        if not isinstance(value, list) or not key.startswith("session_"):
             continue
         session_num = int(key.replace("session_", ""))
         doc_id = f"session_{session_num}"
@@ -157,10 +157,7 @@ def _build_entries(
         if not doc_ids:
             continue
 
-        query = (
-            f"Conversation: {sample_id}\n"
-            f"Question: {qa['question']}"
-        )
+        query = qa["question"]
 
         entries.append(
             GroundTruthEntry(
