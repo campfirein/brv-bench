@@ -125,6 +125,7 @@ class LLMJudge(Metric):
         self._concurrency = concurrency
         self._cache_path = cache_path
         self._last_verdicts: dict[str, JudgeVerdict] = {}
+        self._session_cache: dict[str, JudgeVerdict] = {}
 
     @property
     def id(self) -> str:
@@ -149,10 +150,11 @@ class LLMJudge(Metric):
                 )
             ]
 
-        # Load existing cache (if configured).
+        # Load existing cache (if configured), then merge in-memory session cache.
         cached: dict[str, JudgeVerdict] = {}
         if self._cache_path is not None:
             cached = _load_cache(self._cache_path)
+        cached.update(self._session_cache)
 
         # Partition into cached / uncached.
         uncached: list[tuple[QueryExecution, GroundTruthEntry]] = []
@@ -173,6 +175,7 @@ class LLMJudge(Metric):
         if uncached:
             new_verdicts = self._run_async(self._judge_all(uncached))
             cached.update(new_verdicts)
+            self._session_cache.update(new_verdicts)
             if self._cache_path is not None:
                 _save_cache(self._cache_path, cached)
 
