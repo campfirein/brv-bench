@@ -3,7 +3,7 @@
 Benchmark suite for evaluating retrieval quality, latency, and diversity of AI agent context systems. Powered for ByteRover, engineered by [ByteRover](https://www.byterover.dev/).
 
 ## Overall Accuracy
-![image](assets/images/overall.svg)
+![image](assets/images/overall_accuracy.svg)
 ## Setup
 
 ```bash
@@ -15,7 +15,7 @@ python -m brv_bench --help
 
 | Dataset | Description | Corpus | Queries | Download | Context Tree |
 |---------|-------------|--------|---------|----------|:------------:|
-| LoCoMo | Long-term conversation memory QA (10 conversations, 272 sessions) | 272 docs | 1982 | [locomo10.json](https://github.com/snap-research/locomo/blob/main/data/locomo10.json) | [download](https://drive.google.com/file/d/1YxlrXgPOcXeEmR2C3I0Px53L_WuVBbBW/view) |
+| LoCoMo | Long-term conversation memory QA (10 conversations, 272 sessions) | 272 docs | 1982 | [locomo10.json](https://github.com/snap-research/locomo/blob/main/data/locomo10.json) | [download](https://drive.google.com/file/d/1U6pTh7aQqfJaMCjMYgVtQUzOcQaiEL0I/view) |
 | LongMemEval | Long-term interactive memory benchmark (ICLR 2025, 6 memory abilities) | 948 docs (oracle) | 500 | [HuggingFace](https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned) | |
 
 ## Usage
@@ -128,18 +128,18 @@ Automatically enabled for datasets with a `justifier_template` (LoCoMo and LongM
 
 ## Results on LoCoMo (LLM Judge Accuracy %)
 
-![image](assets/images/leaderboard.svg)
+![image](assets/images/accuracy_per_category.svg)
 
-| Method | Single-Hop | Multi-Hop | Open Domain | Temporal | Overall |
+| System | Single-Hop | Multi-Hop | Open Domain | Temporal | Overall |
 |--------|:----------:|:---------:|:-----------:|:--------:|:-------:|
-| **ByteRover R2** | **97.38** | **91.49** | **89.13** | **96.57** | **95.64** |
-| **ByteRover R1** | **93.10** | **79.79** | **75.00** | **93.77** | **89.71** |
-| Hindsight (Gemini-3) | 86.17 | 70.83 | 95.12 | 83.80 | 89.61 |
-| Hindsight (OSS-120B) | 76.79 | 62.50 | 93.68 | 79.44 | 85.67 |
-| Hindsight (OSS-20B) | 74.11 | 64.58 | 90.96 | 76.32 | 83.18 |
-| Zep | 74.11 | 66.04 | 67.71 | 79.79 | 75.14 |
-| Mem0-Graph | 65.71 | 47.19 | 75.71 | 58.13 | 68.44 |
-| Mem0 | 67.13 | 51.15 | 72.93 | 55.51 | 66.88 |
+| **ByteRover 2.0 (Run 2 - best)** | **95.4%** | **85.1%** | 77.2% | **94.4%** | **92.2%** |
+| ByteRover 2.0 (Run 1) | 93.9% | 82.6% | 77.2% | 94.4% | 90.9% |
+| Hindsight (Gemini-3) | 86.2% | 70.8% | **95.1%** | 83.8% | 89.6% |
+| Memobase v0.0.37 | 70.9% | 46.9% | 77.2% | 85.1% | 75.8% |
+| Zep | 74.1% | 66.0% | 67.7% | 79.8% | 75.1% |
+| Mem0-Graph | 65.7% | 47.2% | 75.7% | 58.1% | 68.4% |
+| Mem0 | 67.1% | 51.2% | 72.9% | 55.5% | 66.9% |
+| OpenAI Memory | 63.8% | 42.9% | 62.3% | 21.7% | 52.9% |
 
 ## Reproduction
 
@@ -150,7 +150,7 @@ To reproduce the ByteRover results above:
 python -m brv_bench evaluate \
   --ground-truth output/locomo.json \
   --judge \
-  --judge-model "gemini-2.5-flash" \
+  --judge-model "gemini-3-flash-preview" \
   --justifier-model "gemini-3-pro-preview"
 ```
 
