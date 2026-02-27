@@ -12,3 +12,7 @@ env/
 results/
 .ruff_cache/
 .pytest_cache/
+logs/
+.brv/
+report/
+output/
