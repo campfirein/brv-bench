@@ -2,6 +2,11 @@
 
 Benchmark suite for evaluating retrieval quality, latency, and diversity of AI agent context systems. Powered for ByteRover, engineered by [ByteRover](https://www.byterover.dev/).
 
+## Read More
+
+- Benchmarking Breakdown: [Benchmarking AI agent memory: ByteRover 2.0 Scores 92.2% and Rewrites the LoCoMo Leaderboard](https://www.byterover.dev/blog/benchmark-ai-agent-memory)
+- Architecture Analysis: [Architecture Deep Dive: ByteRover CLI 2.0 - Memory For Autonomous Agents](https://www.byterover.dev/blog/memory-architecture)
+
 ## Overall Accuracy
 ![image](assets/images/overall_accuracy.svg)
 ## Setup
