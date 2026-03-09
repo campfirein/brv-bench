@@ -8,11 +8,15 @@ raised at construction time if the chosen backend is not installed.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 from brv_bench.metrics._judge.constants import (
     ANTHROPIC_ADAPTIVE_EFFORT,
@@ -302,6 +306,8 @@ class GeminiJudgeClient(JudgeClient):
     async def raw_call(
         self, prompt: str, *, max_tokens: int = RAW_CALL_DEFAULT_MAX_TOKENS
     ) -> str:
+        from google.genai import errors as genai_errors
+
         config: dict = {
             "temperature": 0.0,
             "max_output_tokens": max_tokens,
@@ -316,12 +322,30 @@ class GeminiJudgeClient(JudgeClient):
                 "thinking_budget": GEMINI_THINKING_BUDGET_DISABLED
             }
 
-        response = await self._client.aio.models.generate_content(
-            model=self._model,
-            contents=prompt,
-            config=config,
-        )
-        return response.text or ""
+        max_retries = 8
+        wait = 30.0
+        for attempt in range(max_retries + 1):
+            try:
+                response = await self._client.aio.models.generate_content(
+                    model=self._model,
+                    contents=prompt,
+                    config=config,
+                )
+                return response.text or ""
+            except (genai_errors.ServerError, genai_errors.ClientError) as exc:
+                retryable = (
+                    isinstance(exc, genai_errors.ServerError) and exc.code == 503
+                ) or (
+                    isinstance(exc, genai_errors.ClientError) and exc.code == 429
+                )
+                if not retryable or attempt == max_retries:
+                    raise
+                logger.warning(
+                    "Gemini %s (attempt %d/%d) — retrying in %.0fs: %s",
+                    exc.code, attempt + 1, max_retries, wait, exc,
+                )
+                await asyncio.sleep(wait)
+                wait = min(wait * 2, 300.0)
 
 
 # ── Factory ──────────────────────────────────────────────────────────
