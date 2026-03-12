@@ -159,6 +159,10 @@ def _build_entries(raw_data: list[dict]) -> list[GroundTruthEntry]:
 # =============================================================================
 
 CURATE_TEMPLATE = """\
+MANDATORY: path="{source}/{doc_id}", title="key_facts". \
+These values are fixed. Do NOT invent, rename, or replace them. \
+Use them verbatim in every tools.curate() call.
+
 You are indexing a long-term chat assistant memory benchmark called \
 LongMemEval into a context tree. Follow these rules EXACTLY. \
 DO NOT READ ANY FILES in this directory. The only files you are \
