@@ -25,6 +25,8 @@ from brv_bench.metrics._judge.constants import (
     ANTHROPIC_ENABLED_PREFIXES,
     ANTHROPIC_THINKING_BUDGET,
     GEMINI_DEFAULT_MODEL,
+    GEMINI_MAX_RETRIES,
+    GEMINI_RETRY_INITIAL_WAIT,
     GEMINI_THINKING_BUDGET_DISABLED,
     JUDGE_MAX_TOKENS,
     OPENAI_DEFAULT_MODEL,
@@ -322,8 +324,8 @@ class GeminiJudgeClient(JudgeClient):
                 "thinking_budget": GEMINI_THINKING_BUDGET_DISABLED
             }
 
-        max_retries = 8
-        wait = 30.0
+        max_retries = GEMINI_MAX_RETRIES
+        wait = GEMINI_RETRY_INITIAL_WAIT
         for attempt in range(max_retries + 1):
             try:
                 response = await self._client.aio.models.generate_content(

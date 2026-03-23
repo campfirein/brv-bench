@@ -50,3 +50,11 @@ GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
 
 # thinking_budget value that disables Gemini thinking entirely.
 GEMINI_THINKING_BUDGET_DISABLED = 0
+
+# ── Retry ────────────────────────────────────────────────────────────
+
+# Maximum number of retries for transient API errors (503 / 429).
+GEMINI_MAX_RETRIES = 8
+
+# Initial back-off wait (seconds) between retries; doubles each attempt up to 300s.
+GEMINI_RETRY_INITIAL_WAIT = 30.0
