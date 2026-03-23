@@ -4,11 +4,12 @@ Benchmark suite for evaluating retrieval quality, latency, and diversity of AI a
 
 ## Blog Posts
 
+- LongMemEval-S Deep Dive: [Finding the Needle: ByteRover 2.1.5 Takes On LongMemEval-S](https://www.byterover.dev/blog/placeholder)
 - Benchmarking Breakdown: [Benchmarking AI agent memory: ByteRover 2.0 Scores 92.2% and Rewrites the LoCoMo Leaderboard](https://www.byterover.dev/blog/benchmark-ai-agent-memory)
 - Architecture Analysis: [Architecture Deep Dive: ByteRover CLI 2.0 - Memory For Autonomous Agents](https://www.byterover.dev/blog/memory-architecture)
 
 ## Overall Accuracy
-![image](assets/images/overall_accuracy.png)
+![image](assets/images/lme_s_overall_accuracy.svg)
 ## Setup
 
 ```bash
@@ -136,7 +137,7 @@ Automatically enabled for datasets with a `justifier_template` (LoCoMo and LongM
 
 ### LongMemEval-S
 
-![image](assets/images/longmemeval_overall_accuracy.png)
+![image](assets/images/longmemeval_s.svg)
 
 | Category | Queries | ByteRover 2.1.5 Run 1 (Gemini 3 Flash) | ByteRover 2.1.5 Run 2 (Gemini 3.1 Pro) | Hindsight (Gemini 3 Pro) | HonCho |
 |----------|:-------:|:--------------------------------------:|:---------------------------------:|:------------------------:|:------:|
@@ -150,7 +151,7 @@ Automatically enabled for datasets with a `justifier_template` (LoCoMo and LongM
 
 ### LoCoMo
 
-![image](assets/images/locomo_by_category.png)
+![image](assets/images/locomo_benchmark.svg)
 
 | Category | ByteRover 2.1.5 | ByteRover 2.0 (Run 2) | Hindsight | HonCho | Memobase v0.0.37 | Zep | Mem0 | OpenAI Memory |
 |----------|:---------------:|:---------------------:|:---------:|:------:|:----------------:|:---:|:----:|:-------------:|
