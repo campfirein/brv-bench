@@ -159,6 +159,10 @@ def _build_entries(raw_data: list[dict]) -> list[GroundTruthEntry]:
 # =============================================================================
 
 CURATE_TEMPLATE = """\
+MANDATORY: path="{source}/{doc_id}", title="key_facts". \
+These values are fixed. Do NOT invent, rename, or replace them. \
+Use them verbatim in every tools.curate() call.
+
 You are indexing a long-term chat assistant memory benchmark called \
 LongMemEval into a context tree. Follow these rules EXACTLY. \
 DO NOT READ ANY FILES in this directory. The only files you are \
@@ -193,13 +197,32 @@ Example file tree:
 
 1. **Metadata header** — session label (session_1, session_2, etc.), \
 date/time of the chat session.
-2. **Key facts** — Extract every factual statement, event, preference, \
+2. **Descriptive title** — A keyword-rich BM25-friendly title (8–14 words) \
+summarising the session's main topics. Rules for the title:
+   - Noun phrase only — NOT a full sentence, no period at the end
+   - Always include proper nouns: people names, pet names, place names, \
+brand names, product names, specific values/counts
+   - Do NOT start with "User" or "Assistant"
+   - Do NOT use vague phrases like "Various Topics", "Personal Conversation", \
+or "Discussion About"
+   - Match your title strategy to the content type:
+     * Personal facts (pet name/breed, name change, certification, purchase): \
+include ALL named entities and specifics
+     * Temporal events (trip, ceremony, party): include EVENT NAME, VENUE, \
+and named people
+     * Tracked metrics (bike count, follower count, score): include exact \
+number and all item names
+     * Per-session facts in a running tally (vet cost, plant bought): include \
+the specific item, amount, and named subject (e.g. pet name)
+     * Preference/recommendation sessions: include the user's topic and any \
+named products/places recommended
+3. **Key facts** — Extract every factual statement, event, preference, \
 opinion, request, recommendation, and personal detail mentioned by \
 BOTH the user AND the assistant. Be exhaustive. Each fact on its own line. \
 Do NOT omit any detail.
-3. **Curate limits** — ONE topic file for ONE session per curate task. \
+4. **Curate limits** — ONE topic file for ONE session per curate task. \
 DO NOT curate more than one topic file for each curate task.
-4. **Context tree consistency** — Before creating a new topic file, \
+5. **Context tree consistency** — Before creating a new topic file, \
 investigate the existing context tree structure. Follow EXACTLY the \
 same naming conventions, directory layout, and file format already \
 established by previous curate tasks.
@@ -238,8 +261,8 @@ Assistant: Great to hear about the brakes. Let me know if the reset fixes it.
 ```markdown
 ## Narrative
 ### Rules
-# Session 2 - gpt4_2655b836
-**Date:** 2022/04/10 (Mon) 14:32
+# Session 2 - Car First Service GPS Not Working Brake Pads Confirmed Fine
+**Date:** 2023/04/10 (Mon) 14:47
 
 ## Key Facts
 - User just got car back from its first service
