@@ -4,11 +4,12 @@ Benchmark suite for evaluating retrieval quality, latency, and diversity of AI a
 
 ## Blog Posts
 
+- LongMemEval-S Deep Dive: [Finding the Needle: ByteRover 2.1.5 Takes On LongMemEval-S](https://www.byterover.dev/blog/placeholder)
 - Benchmarking Breakdown: [Benchmarking AI agent memory: ByteRover 2.0 Scores 92.2% and Rewrites the LoCoMo Leaderboard](https://www.byterover.dev/blog/benchmark-ai-agent-memory)
 - Architecture Analysis: [Architecture Deep Dive: ByteRover CLI 2.0 - Memory For Autonomous Agents](https://www.byterover.dev/blog/memory-architecture)
 
 ## Overall Accuracy
-![image](assets/images/overall_accuracy.svg)
+![image](assets/images/lme_s_overall_accuracy.svg)
 ## Setup
 
 ```bash
@@ -20,8 +21,8 @@ python -m brv_bench --help
 
 | Dataset | Description | Corpus | Queries | Download | Context Tree |
 |---------|-------------|--------|---------|----------|:------------:|
-| LoCoMo | Long-term conversation memory QA (10 conversations, 272 sessions) | 272 docs | 1982 | [locomo10.json](https://github.com/snap-research/locomo/blob/main/data/locomo10.json) | [download](https://drive.google.com/file/d/1U6pTh7aQqfJaMCjMYgVtQUzOcQaiEL0I/view) |
-| LongMemEval | Long-term interactive memory benchmark (ICLR 2025, 6 memory abilities) | 948 docs (oracle) | 500 | [HuggingFace](https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned) | |
+| LoCoMo | Long-term conversation memory QA (10 conversations, 272 sessions) | 272 docs | 1982 | [locomo10.json](https://github.com/snap-research/locomo/blob/main/data/locomo10.json) | [download](https://drive.google.com/file/d/1-TZztm2_hHRSeh0U_UjopxxiqHg4OBOH/view?usp=drive_link) |
+| LongMemEval-S | Long-term interactive memory benchmark (ICLR 2025, 6 memory abilities, ~48 sessions/question) | 23,867 docs | 500 | [HuggingFace](https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned) | [download](https://drive.google.com/file/d/1TwZfbrCvQRsWiRfky6d2WExgntIFC9pH/view?usp=drive_link) |
 
 ## Usage
 
@@ -81,6 +82,7 @@ python -m brv_bench evaluate \
 | `--judge-model` | `gemini-2.5-flash` / `claude-sonnet-4-6` / `gpt-4o-2024-08-06` | Model name override (default varies by backend) |
 | `--judge-concurrency` | `5` | Max parallel judge API calls |
 | `--judge-cache` | none | Path to JSON cache file |
+| `--context-tree-source` | none | Path to pre-curated context tree for isolated mode |
 
 #### Isolated Mode
 
@@ -131,35 +133,60 @@ Automatically enabled for datasets with a `justifier_template` (LoCoMo and LongM
 | Cold Latency | Query time with no cache (p50/p95/p99) |
 
 
-## Results on LoCoMo (LLM Judge Accuracy %)
+## Results (LLM Judge Accuracy %)
 
-![image](assets/images/accuracy_per_category.svg)
+### LongMemEval-S
 
-| System | Single-Hop | Multi-Hop | Open Domain | Temporal | Overall |
-|--------|:----------:|:---------:|:-----------:|:--------:|:-------:|
-| **ByteRover 2.0 (Run 2 - best)** | **95.4%** | **85.1%** | 77.2% | **94.4%** | **92.2%** |
-| ByteRover 2.0 (Run 1) | 93.9% | 82.6% | 77.2% | 94.4% | 90.9% |
-| Hindsight (Gemini-3) | 86.2% | 70.8% | **95.1%** | 83.8% | 89.6% |
-| Memobase v0.0.37 | 70.9% | 46.9% | 77.2% | 85.1% | 75.8% |
-| Zep | 74.1% | 66.0% | 67.7% | 79.8% | 75.1% |
-| Mem0-Graph | 65.7% | 47.2% | 75.7% | 58.1% | 68.4% |
-| Mem0 | 67.1% | 51.2% | 72.9% | 55.5% | 66.9% |
-| OpenAI Memory | 63.8% | 42.9% | 62.3% | 21.7% | 52.9% |
+![image](assets/images/longmemeval_s.svg)
+
+| Category | Queries | ByteRover 2.1.5 Run 1 (Gemini 3 Flash) | ByteRover 2.1.5 Run 2 (Gemini 3.1 Pro) | Hindsight (Gemini 3 Pro) | HonCho |
+|----------|:-------:|:--------------------------------------:|:---------------------------------:|:------------------------:|:------:|
+| Knowledge Update | 78 | **98.7% (77/78)** | 94.9% (74/78) | 94.9% | 94.9% |
+| Single-Session User | 70 | 98.6% (69/70) | **100% (70/70)** | 97.1% | 94.3% |
+| Single-Session Assistant | 56 | **98.2% (55/56)** | 94.6% (53/56) | 96.4% | 96.4% |
+| Single-Session Preference | 30 | **96.7% (29/30)** | 86.7% (26/30) | 80.0% | 90.0% |
+| Temporal Reasoning | 133 | 91.7% (122/133) | **94.0% (125/133)** | 91.0% | 88.7% |
+| Multi-Session | 133 | 84.2% (112/133) | 85.0% (113/133) | **87.2%** | 85% |
+| **Overall** | **500** | **92.8% (464/500)** | **92.2% (461/500)** | **91.4%** | **90.4%** |
+
+### LoCoMo
+
+![image](assets/images/locomo_benchmark.svg)
+
+| Category | ByteRover 2.1.5 | ByteRover 2.0 (Run 2) | Hindsight | HonCho | Memobase v0.0.37 | Zep | Mem0 | OpenAI Memory |
+|----------|:---------------:|:---------------------:|:---------:|:------:|:----------------:|:---:|:----:|:-------------:|
+| Single-Hop | **97.5% (820/841)** | 95.4% | 86.2% | 93.2% | 70.9% | 74.1% | 67.1% | 63.8% |
+| Multi-Hop | **93.3% (263/282)** | 85.1% | 70.8% | 84.0% | 46.9% | 66.0% | 51.2% | 42.9% |
+| Open Domain | 85.9% (79/92) | 77.2% | **95.1%** | 77.1% | 77.2% | 67.7% | 72.9% | 62.3% |
+| Temporal | **97.8% (314/321)** | 94.4% | 83.8% | 88.2% | 85.1% | 79.8% | 55.5% | 21.7% |
+| **Overall** | **96.1%** | 92.2% | 89.6% | 89.9% | 75.8% | 75.1% | 66.9% | 52.9% |
 
 ## Reproduction
 
-To reproduce the ByteRover results above:
+To reproduce our best runs, we highly recommend using the pre-curated context trees from [Supported Datasets](#supported-datasets) for consistent performance.
+
+- **LoCoMo:** Place the curated context tree inside `.brv/context-tree/`.
+- **LongMemEval-S:** Place the curated context tree **outside** `.brv/context-tree/` and pass it via `--context-tree-source` (isolated mode).
 
 ```bash
-# For LoCoMo
+# For LongMemEval-S (ByteRover 2.1.5 Run 1)
+python -m brv_bench evaluate \
+  --ground-truth output/longmemeval_s_benchmark.json \
+  --judge \
+  --judge-model "gemini-3-flash" \
+  --justifier-model "gemini-3.1-pro-preview" \
+  --context-tree-source LME-S-context-tree \
+  --limit 32
+
+# For LoCoMo (ByteRover 2.1.5)
 python -m brv_bench evaluate \
   --ground-truth output/locomo.json \
   --judge \
   --judge-model "gemini-3-flash-preview" \
-  --justifier-model "gemini-3-pro-preview"
+  --justifier-model "gemini-3.1-pro-preview"
 ```
 
 ## Requirements
-- byterover-cli >= 2.0.0
+- byterover-cli >= 2.1.5
 - Python >= 3.12
 - A project with `brv` initialized (`.brv/` directory exists)
