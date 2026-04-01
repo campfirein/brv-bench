@@ -4,7 +4,7 @@ Benchmark suite for evaluating retrieval quality, latency, and diversity of AI a
 
 ## Blog Posts
 
-- LongMemEval-S Deep Dive: [Finding the Needle: ByteRover 2.1.5 Takes On LongMemEval-S](https://www.byterover.dev/blog/placeholder)
+- LongMemEval-S Deep Dive: [Benchmark AI Agent Memory in Real Production: ByteRover scores 92.8% Top Market Accuracy, 1.6s Latency](https://www.byterover.dev/blog/benchmark_ai_agent_memory_real_production_byterover_top_market_accuracy_longmemeval)
 - Benchmarking Breakdown: [Benchmarking AI agent memory: ByteRover 2.0 Scores 92.2% and Rewrites the LoCoMo Leaderboard](https://www.byterover.dev/blog/benchmark-ai-agent-memory)
 - Architecture Analysis: [Architecture Deep Dive: ByteRover CLI 2.0 - Memory For Autonomous Agents](https://www.byterover.dev/blog/memory-architecture)
 
