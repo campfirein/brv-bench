@@ -68,7 +68,7 @@ Install deps and set an API key, then pass `--judge`:
 
 ```bash
 pip install 'brv-bench[judge]'
-export GEMINI_API_KEY="your-api-key"   # or ANTHROPIC_API_KEY / OPENAI_API_KEY
+export GEMINI_API_KEY="your-api-key"   # or ANTHROPIC_API_KEY / OPENAI_API_KEY (not needed for ollama)
 
 python -m brv_bench evaluate \
   --ground-truth assets/sample_data/locomo.json \
@@ -78,8 +78,9 @@ python -m brv_bench evaluate \
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--judge` | off | Enable LLM-as-Judge metric |
-| `--judge-backend` | `gemini` | `gemini`, `anthropic`, or `openai` |
-| `--judge-model` | `gemini-2.5-flash` / `claude-sonnet-4-6` / `gpt-4o-2024-08-06` | Model name override (default varies by backend) |
+| `--judge-backend` | `gemini` | `gemini`, `anthropic`, `openai`, or `ollama` |
+| `--judge-model` | `gemini-2.5-flash` / `claude-sonnet-4-6` / `gpt-4o-2024-08-06` | Model name override (default varies by backend; required for `ollama`) |
+| `--judge-host` | `http://localhost:11434` | Ollama server host (`ollama` backend only) |
 | `--judge-concurrency` | `5` | Max parallel judge API calls |
 | `--judge-cache` | none | Path to JSON cache file |
 | `--context-tree-source` | none | Path to pre-curated context tree for isolated mode |
@@ -103,8 +104,9 @@ Automatically enabled for datasets with a `justifier_template` (LoCoMo and LongM
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--justifier-backend` | `gemini` | `gemini`, `anthropic`, or `openai` |
-| `--justifier-model` | `gemini-2.5-flash` / `claude-sonnet-4-6` / `gpt-4o-2024-08-06` | Model name override (default varies by backend) |
+| `--justifier-backend` | `gemini` | `gemini`, `anthropic`, `openai`, or `ollama` |
+| `--justifier-model` | `gemini-2.5-flash` / `claude-sonnet-4-6` / `gpt-4o-2024-08-06` | Model name override (default varies by backend; required for `ollama`) |
+| `--justifier-host` | `http://localhost:11434` | Ollama server host (`ollama` backend only) |
 
 #### Ground Truth Format
 

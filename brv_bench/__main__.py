@@ -80,7 +80,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     eval_parser.add_argument(
         "--judge-backend",
-        choices=["anthropic", "gemini", "openai"],
+        choices=["anthropic", "gemini", "ollama", "openai"],
         default="gemini",
         help="LLM backend for the judge (default: gemini).",
     )
@@ -89,6 +89,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=str,
         default=None,
         help="Model name for the judge (default: backend-specific).",
+    )
+    eval_parser.add_argument(
+        "--judge-host",
+        type=str,
+        default=None,
+        help=(
+            "Ollama server host for the ollama judge backend "
+            "(default: http://localhost:11434)."
+        ),
     )
     eval_parser.add_argument(
         "--judge-concurrency",
@@ -106,7 +115,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     # Answer justifier options
     eval_parser.add_argument(
         "--justifier-backend",
-        choices=["anthropic", "gemini", "openai"],
+        choices=["anthropic", "gemini", "ollama", "openai"],
         default="gemini",
         help="LLM backend for the answer justifier (default: gemini).",
     )
@@ -117,10 +126,43 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Model name for the justifier (default: backend-specific).",
     )
     eval_parser.add_argument(
+        "--justifier-host",
+        type=str,
+        default=None,
+        help=(
+            "Ollama server host for the ollama justifier backend "
+            "(default: http://localhost:11434)."
+        ),
+    )
+    eval_parser.add_argument(
         "--justifier-concurrency",
         type=int,
         default=5,
         help="Max parallel justifier API calls (default: 5).",
+    )
+
+    # Skip justifier (for agentic-loop ablation: brv query answer → judge directly)
+    eval_parser.add_argument(
+        "--skip-justifier",
+        action="store_true",
+        default=False,
+        help=(
+            "Skip the answer justifier and pass the brv query response "
+            "directly to the judge. Useful when the query engine already "
+            "produces a complete answer (e.g. full agentic loop)."
+        ),
+    )
+
+    # Query system prompt (prepended to the question sent to brv query)
+    eval_parser.add_argument(
+        "--query-system-prompt",
+        type=str,
+        default=None,
+        help=(
+            "System prompt prepended to the question content before "
+            "sending to brv query. Use this to control the response "
+            "format of the query engine."
+        ),
     )
 
     # Isolated mode
@@ -210,6 +252,7 @@ async def main(argv: list[str] | None = None) -> int:
             client = create_judge_client(
                 backend=args.judge_backend,
                 model=args.judge_model,
+                host=args.judge_host,
             )
             judge_metric = LLMJudge(
                 client=client,
@@ -220,23 +263,31 @@ async def main(argv: list[str] | None = None) -> int:
             metrics.append(judge_metric)
 
         justifier = None
-        if prompt_config.justifier_template:
+        if prompt_config.justifier_template and not args.skip_justifier:
             from brv_bench.adapters.justifier import AnswerJustifier
             from brv_bench.metrics._judge.client import create_judge_client
 
             justifier_client = create_judge_client(
                 backend=args.justifier_backend,
                 model=args.justifier_model,
+                host=args.justifier_host,
             )
             justifier = AnswerJustifier(
                 client=justifier_client,
                 prompt_template=prompt_config.justifier_template,
             )
 
+        # Use explicit --query-system-prompt if given, otherwise fall back
+        # to the dataset's built-in prompt when justifier is skipped.
+        query_sys_prompt = args.query_system_prompt
+        if query_sys_prompt is None and args.skip_justifier:
+            query_sys_prompt = prompt_config.query_system_prompt
+
         adapter = BrvCliAdapter(
             prompt_config=prompt_config,
             justifier=justifier,
             context_tree_source=args.context_tree_source,
+            query_system_prompt=query_sys_prompt,
         )
 
         output_path = args.output

@@ -1,9 +1,10 @@
 """LLM judge client abstraction.
 
 Provides a thin async interface over LLM provider APIs so the judge
-metric is backend-agnostic.  The ``anthropic``, ``openai``, and
-``google-genai`` SDKs are optional dependencies — a clear error is
-raised at construction time if the chosen backend is not installed.
+metric is backend-agnostic.  The ``anthropic``, ``openai``,
+``google-genai``, and ``ollama`` SDKs are optional dependencies — a
+clear error is raised at construction time if the chosen backend is
+not installed.
 """
 
 from __future__ import annotations
@@ -29,6 +30,8 @@ from brv_bench.metrics._judge.constants import (
     GEMINI_RETRY_INITIAL_WAIT,
     GEMINI_THINKING_BUDGET_DISABLED,
     JUDGE_MAX_TOKENS,
+    OLLAMA_DEFAULT_HOST,
+    OLLAMA_DEFAULT_MODEL,
     OPENAI_DEFAULT_MODEL,
     RAW_CALL_DEFAULT_MAX_TOKENS,
 )
@@ -350,11 +353,67 @@ class GeminiJudgeClient(JudgeClient):
                 wait = min(wait * 2, 300.0)
 
 
+# ── Ollama ───────────────────────────────────────────────────────────
+
+
+class OllamaJudgeClient(JudgeClient):
+    """Judge client backed by an Ollama server via the official SDK.
+
+    Uses the ``ollama`` Python package which natively handles thinking
+    mode: the SDK separates reasoning (``message.thinking``) from the
+    final answer (``message.content``), so no manual tag stripping is
+    needed.
+
+    Thinking is disabled by default (``think=False``) since the judge
+    and justifier tasks are simple classification / synthesis.
+    """
+
+    def __init__(
+        self,
+        model: str = OLLAMA_DEFAULT_MODEL,
+        host: str = OLLAMA_DEFAULT_HOST,
+        think: bool = False,
+    ) -> None:
+        if not model:
+            raise ValueError(
+                "A model name is required for the ollama backend.  "
+                "Pass --judge-model / --justifier-model "
+                "(e.g. 'qwen3.5:9b')."
+            )
+        try:
+            import ollama as _ollama
+        except ImportError as exc:
+            raise ImportError(
+                "The 'ollama' package is required for the Ollama "
+                "judge backend.  Install it with: pip install ollama"
+            ) from exc
+
+        self._client = _ollama.AsyncClient(host=host)
+        self._model = model
+        self._think = think
+
+    async def raw_call(
+        self, prompt: str, *, max_tokens: int = RAW_CALL_DEFAULT_MAX_TOKENS
+    ) -> str:
+        response = await self._client.chat(
+            model=self._model,
+            messages=[{"role": "user", "content": prompt}],
+            think=self._think,
+            options={
+                "num_predict": max_tokens,
+                "num_ctx": max_tokens,
+                "temperature": 0.0,
+            },
+        )
+        return response.message.content or ""
+
+
 # ── Factory ──────────────────────────────────────────────────────────
 
 _BACKENDS: dict[str, type[JudgeClient]] = {
     "anthropic": AnthropicJudgeClient,
     "gemini": GeminiJudgeClient,
+    "ollama": OllamaJudgeClient,
     "openai": OpenAIJudgeClient,
 }
 
@@ -363,13 +422,17 @@ def create_judge_client(
     backend: str,
     model: str | None = None,
     api_key: str | None = None,
+    host: str | None = None,
 ) -> JudgeClient:
     """Create a judge client by backend name.
 
     Args:
-        backend: ``'anthropic'``, ``'gemini'``, or ``'openai'``.
+        backend: ``'anthropic'``, ``'gemini'``, ``'ollama'``, or
+            ``'openai'``.
         model: Optional model override (uses backend default if *None*).
         api_key: Optional API key (reads env var if *None*).
+        host: Ollama server host for the ``ollama`` backend
+            (defaults to ``http://localhost:11434``).
 
     Raises:
         ValueError: If *backend* is not recognised.
@@ -384,6 +447,8 @@ def create_judge_client(
     kwargs: dict[str, str] = {}
     if model is not None:
         kwargs["model"] = model
-    if api_key is not None:
+    if api_key is not None and backend != "ollama":
         kwargs["api_key"] = api_key
+    if host is not None and backend == "ollama":
+        kwargs["host"] = host
     return cls(**kwargs)

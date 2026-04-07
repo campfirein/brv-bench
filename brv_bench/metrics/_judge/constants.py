@@ -43,6 +43,14 @@ ANTHROPIC_ENABLED_PREFIXES = (
 # Default model for the OpenAI backend.
 OPENAI_DEFAULT_MODEL = "gpt-4o-2024-08-06"
 
+# ── Ollama ────────────────────────────────────────────────────────────
+
+# Default host for the Ollama backend.
+OLLAMA_DEFAULT_HOST = "http://localhost:11434"
+
+# Default model — intentionally left empty so the user must specify one.
+OLLAMA_DEFAULT_MODEL = ""
+
 # ── Gemini ────────────────────────────────────────────────────────────
 
 # Default model for the Gemini backend.

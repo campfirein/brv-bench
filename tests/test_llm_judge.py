@@ -13,6 +13,7 @@ from brv_bench.metrics._judge.client import (
     GeminiJudgeClient,
     JudgeClient,
     JudgeVerdict,
+    OllamaJudgeClient,
     OpenAIJudgeClient,
     create_judge_client,
     parse_verdict,
@@ -807,3 +808,173 @@ class TestCLIFlags:
 
         args = parse_args(["evaluate", "--ground-truth", "data.json"])
         assert args.judge is False
+
+    def test_ollama_backend_with_host(self):
+        from brv_bench.__main__ import parse_args
+
+        args = parse_args(
+            [
+                "evaluate",
+                "--ground-truth",
+                "data.json",
+                "--judge",
+                "--judge-backend",
+                "ollama",
+                "--judge-model",
+                "qwen3.5:9b",
+                "--judge-host",
+                "http://localhost:11434",
+            ]
+        )
+        assert args.judge_backend == "ollama"
+        assert args.judge_model == "qwen3.5:9b"
+        assert args.judge_host == "http://localhost:11434"
+
+    def test_justifier_host(self):
+        from brv_bench.__main__ import parse_args
+
+        args = parse_args(
+            [
+                "evaluate",
+                "--ground-truth",
+                "data.json",
+                "--justifier-backend",
+                "ollama",
+                "--justifier-model",
+                "qwen3.5:9b",
+                "--justifier-host",
+                "http://remote-server:11434",
+            ]
+        )
+        assert args.justifier_backend == "ollama"
+        assert args.justifier_host == "http://remote-server:11434"
+
+    def test_host_defaults_none(self):
+        from brv_bench.__main__ import parse_args
+
+        args = parse_args(["evaluate", "--ground-truth", "data.json"])
+        assert args.judge_host is None
+        assert args.justifier_host is None
+
+
+# ----------------------------------------------------------------
+# OllamaJudgeClient
+# ----------------------------------------------------------------
+
+
+class TestOllamaJudgeClient:
+    def test_missing_model_raises(self):
+        mock_mod = MagicMock()
+        with patch.dict("sys.modules", {"ollama": mock_mod}):
+            with pytest.raises(ValueError, match="model name is required"):
+                OllamaJudgeClient(model="")
+
+    def test_without_sdk_raises(self):
+        with patch.dict("sys.modules", {"ollama": None}):
+            with pytest.raises(ImportError, match="ollama"):
+                OllamaJudgeClient(model="qwen3.5:9b")
+
+    def test_custom_host(self):
+        mock_mod = MagicMock()
+        with patch.dict("sys.modules", {"ollama": mock_mod}):
+            OllamaJudgeClient(
+                model="qwen3.5:9b",
+                host="http://remote:11434",
+            )
+        mock_mod.AsyncClient.assert_called_once_with(
+            host="http://remote:11434",
+        )
+
+    def test_raw_call_returns_content(self):
+        mock_mod = MagicMock()
+        mock_async_client = MagicMock()
+        mock_mod.AsyncClient.return_value = mock_async_client
+
+        mock_response = MagicMock()
+        mock_response.message.content = (
+            '{"reasoning": "ok", "verdict": "correct"}'
+        )
+        mock_async_client.chat = AsyncMock(return_value=mock_response)
+
+        with patch.dict("sys.modules", {"ollama": mock_mod}):
+            client = OllamaJudgeClient(model="qwen3.5:9b")
+
+        import asyncio
+
+        result = asyncio.run(client.raw_call("test prompt"))
+        assert '"verdict"' in result
+
+    def test_sends_correct_params(self):
+        mock_mod = MagicMock()
+        mock_async_client = MagicMock()
+        mock_mod.AsyncClient.return_value = mock_async_client
+
+        mock_response = MagicMock()
+        mock_response.message.content = (
+            '{"reasoning": "ok", "verdict": "correct"}'
+        )
+        mock_async_client.chat = AsyncMock(return_value=mock_response)
+
+        with patch.dict("sys.modules", {"ollama": mock_mod}):
+            client = OllamaJudgeClient(model="qwen3.5:9b")
+
+        import asyncio
+
+        verdict = asyncio.run(client.judge("q1", "judge this"))
+
+        mock_async_client.chat.assert_called_once_with(
+            model="qwen3.5:9b",
+            messages=[{"role": "user", "content": "judge this"}],
+            think=False,
+            options={
+                "num_predict": 8192,
+                "num_ctx": 8192,
+                "temperature": 0.0,
+            },
+        )
+        assert verdict.is_correct is True
+        assert verdict.query == "q1"
+
+    def test_think_enabled(self):
+        mock_mod = MagicMock()
+        mock_async_client = MagicMock()
+        mock_mod.AsyncClient.return_value = mock_async_client
+
+        mock_response = MagicMock()
+        mock_response.message.content = (
+            '{"reasoning": "deep thought", "verdict": "correct"}'
+        )
+        mock_async_client.chat = AsyncMock(return_value=mock_response)
+
+        with patch.dict("sys.modules", {"ollama": mock_mod}):
+            client = OllamaJudgeClient(model="qwen3.5:9b", think=True)
+
+        import asyncio
+
+        asyncio.run(client.raw_call("test prompt", max_tokens=256))
+
+        mock_async_client.chat.assert_called_once_with(
+            model="qwen3.5:9b",
+            messages=[{"role": "user", "content": "test prompt"}],
+            think=True,
+            options={
+                "num_predict": 256,
+                "num_ctx": 256,
+                "temperature": 0.0,
+            },
+        )
+
+    def test_factory_creates_ollama(self):
+        mock_mod = MagicMock()
+        with patch.dict("sys.modules", {"ollama": mock_mod}):
+            client = create_judge_client(
+                "ollama",
+                model="qwen3.5:9b",
+                host="http://localhost:11434",
+            )
+        assert isinstance(client, OllamaJudgeClient)
+
+    def test_factory_ollama_without_sdk(self):
+        with patch.dict("sys.modules", {"ollama": None}):
+            with pytest.raises(ImportError, match="ollama"):
+                create_judge_client("ollama", model="qwen3.5:9b")
