@@ -141,30 +141,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Max parallel justifier API calls (default: 5).",
     )
 
-    # Skip justifier (for agentic-loop ablation: brv query answer → judge directly)
-    eval_parser.add_argument(
-        "--skip-justifier",
-        action="store_true",
-        default=False,
-        help=(
-            "Skip the answer justifier and pass the brv query response "
-            "directly to the judge. Useful when the query engine already "
-            "produces a complete answer (e.g. full agentic loop)."
-        ),
-    )
-
-    # Query system prompt (prepended to the question sent to brv query)
-    eval_parser.add_argument(
-        "--query-system-prompt",
-        type=str,
-        default=None,
-        help=(
-            "System prompt prepended to the question content before "
-            "sending to brv query. Use this to control the response "
-            "format of the query engine."
-        ),
-    )
-
     # Isolated mode
     eval_parser.add_argument(
         "--context-tree-source",
@@ -263,7 +239,7 @@ async def main(argv: list[str] | None = None) -> int:
             metrics.append(judge_metric)
 
         justifier = None
-        if prompt_config.justifier_template and not args.skip_justifier:
+        if prompt_config.justifier_template:
             from brv_bench.adapters.justifier import AnswerJustifier
             from brv_bench.metrics._judge.client import create_judge_client
 
@@ -277,17 +253,10 @@ async def main(argv: list[str] | None = None) -> int:
                 prompt_template=prompt_config.justifier_template,
             )
 
-        # Use explicit --query-system-prompt if given, otherwise fall back
-        # to the dataset's built-in prompt when justifier is skipped.
-        query_sys_prompt = args.query_system_prompt
-        if query_sys_prompt is None and args.skip_justifier:
-            query_sys_prompt = prompt_config.query_system_prompt
-
         adapter = BrvCliAdapter(
             prompt_config=prompt_config,
             justifier=justifier,
             context_tree_source=args.context_tree_source,
-            query_system_prompt=query_sys_prompt,
         )
 
         output_path = args.output
