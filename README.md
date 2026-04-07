@@ -188,6 +188,33 @@ python -m brv_bench evaluate \
   --justifier-model "gemini-3.1-pro-preview"
 ```
 
+### Ollama (local models)
+
+Use `scripts/run_bench.sh` to benchmark a local model end-to-end via Ollama. The script pulls the model, collects tok/s and VRAM metrics, runs the full evaluation with LLM-as-Judge, and saves a metrics report.
+
+```bash
+# Install the ollama SDK
+uv pip install ollama
+
+# Start Ollama (in a separate terminal)
+ollama serve
+
+# Run the benchmark
+GROUND_TRUTH=output/longmemeval_s_benchmark.json \
+CONTEXT_TREE_SOURCE=LME-S-context-tree \
+    scripts/run_bench.sh qwen3.5:9b
+```
+
+| Variable | Required | Default | Description |
+|----------|:--------:|---------|-------------|
+| `GROUND_TRUTH` | yes | — | Path to ground truth JSON |
+| `CONTEXT_TREE_SOURCE` | no | — | Path to pre-curated context tree (isolated mode) |
+| `OLLAMA_HOST` | no | `http://localhost:11434` | Ollama server host |
+| `REPORT_DIR` | no | `<repo>/report` | Where to save reports |
+| `JUDGE_CONCURRENCY` | no | `1` | Parallel judge calls |
+| `JUSTIFIER_CONCURRENCY` | no | `1` | Parallel justifier calls |
+| `LIMIT` | no | `32` | Max results per query |
+
 ## Requirements
 - byterover-cli >= 2.1.5
 - Python >= 3.12
