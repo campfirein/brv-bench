@@ -159,87 +159,92 @@ def _build_entries(raw_data: list[dict]) -> list[GroundTruthEntry]:
 # =============================================================================
 
 CURATE_TEMPLATE = """\
-MANDATORY: path="{source}/{doc_id}", title="key_facts". \
-These values are fixed. Do NOT invent, rename, or replace them. \
-Use them verbatim in every tools.curate() call.
+MANDATORY: emit exactly one `<bv-topic>` HTML document with \
+path="{source}/{doc_id}". These values are fixed. Do NOT invent, \
+rename, or replace them. Do NOT create any other topic files \
+(no "indexing-guide" topic, no "guidelines" topic). One curate call = \
+one topic file at the path above.
 
 You are indexing a long-term chat assistant memory benchmark called \
 LongMemEval into a context tree. Follow these rules EXACTLY. \
 DO NOT READ ANY FILES in this directory. The only files you are \
-allowed to read are from the context tree ./brv/context-tree/
+allowed to read are from the context tree `./brv/context-tree/`.
 
 ## Context tree structure
 
-- Domain = question ID (e.g., `gpt4_2655b836`)
-- Topic  = session label (e.g., `session_1`, `session_2`)
-- One file per session containing ONLY structured key facts (no transcript).
+- Domain = question ID (e.g., `gpt4_2655b836`) — the source field above.
+- Topic  = session label (e.g., `session_1`, `session_2`) — the doc_id field above.
+- One file per session at `.brv/context-tree/<domain>/<topic>.html`.
 
 Example file tree:
 
 ```
 .brv/context-tree/
 ├── gpt4_2655b836/
-│   ├── session_1/
-│   │   └── key_facts.md
-│   ├── session_2/
-│   │   └── key_facts.md
-│   └── session_3/
-│       └── key_facts.md
+│   ├── session_1.html
+│   ├── session_2.html
+│   └── session_3.html
 ├── gpt4_2487a7cb/
-│   ├── session_1/
-│   │   └── key_facts.md
-│   └── session_2/
-│       └── key_facts.md
+│   ├── session_1.html
+│   └── session_2.html
 └── ...
 ```
 
-## What each context file MUST contain
+## Output contract
 
-1. **Metadata header** — session label (session_1, session_2, etc.), \
-date/time of the chat session.
-2. **Descriptive title** — A keyword-rich BM25-friendly title (8–14 words) \
-summarising the session's main topics. Rules for the title:
-   - Noun phrase only — NOT a full sentence, no period at the end
-   - Always include proper nouns: people names, pet names, place names, \
-brand names, product names, specific values/counts
-   - Do NOT start with "User" or "Assistant"
-   - Do NOT use vague phrases like "Various Topics", "Personal Conversation", \
-or "Discussion About"
-   - Match your title strategy to the content type:
-     * Personal facts (pet name/breed, name change, certification, purchase): \
-include ALL named entities and specifics
-     * Temporal events (trip, ceremony, party): include EVENT NAME, VENUE, \
-and named people
-     * Tracked metrics (bike count, follower count, score): include exact \
-number and all item names
-     * Per-session facts in a running tally (vet cost, plant bought): include \
-the specific item, amount, and named subject (e.g. pet name)
-     * Preference/recommendation sessions: include the user's topic and any \
-named products/places recommended
-3. **Key facts** — Extract every factual statement, event, preference, \
-opinion, request, recommendation, and personal detail mentioned by \
-BOTH the user AND the assistant. Be exhaustive. Each fact on its own line. \
-Do NOT omit any detail.
-4. **Curate limits** — ONE topic file for ONE session per curate task. \
-DO NOT curate more than one topic file for each curate task.
-5. **Context tree consistency** — Before creating a new topic file, \
-investigate the existing context tree structure. Follow EXACTLY the \
-same naming conventions, directory layout, and file format already \
-established by previous curate tasks.
+Emit a single `<bv-topic>` HTML document. The first character of your \
+output must be `<` (the opening of `<bv-topic>`); the last characters \
+must be `</bv-topic>`. Do NOT wrap in a code fence; do NOT add any \
+prose preamble or trailing commentary. The document MUST contain:
 
-Do NOT store the raw transcript. Store only extracted facts.
+1. **`<bv-topic>` attributes:**
+   - `path="{source}/{doc_id}"` — REQUIRED, exact value
+   - `title` — REQUIRED keyword-rich BM25-friendly title (8–14 words):
+     * Noun phrase only — NOT a full sentence, no trailing period
+     * Always include proper nouns: people names, pet names, place \
+names, brand names, product names, specific values/counts
+     * Do NOT start with "User" or "Assistant"
+     * Do NOT use vague phrases like "Various Topics", "Personal \
+Conversation", or "Discussion About"
+     * Match strategy to content type:
+       - Personal facts (pet name/breed, name change, certification, \
+purchase): include ALL named entities and specifics
+       - Temporal events (trip, ceremony, party): include EVENT NAME, \
+VENUE, and named people
+       - Tracked metrics (bike count, follower count, score): include \
+exact number and all item names
+       - Per-session facts in a running tally (vet cost, plant bought): \
+include the specific item, amount, and named subject (e.g. pet name)
+       - Preference/recommendation sessions: include the user's topic \
+and any named products/places recommended
+   - `summary` — RECOMMENDED one-line semantic summary
+   - `tags`/`keywords` — comma-separated retrieval tags. The writer \
+injects `createdat`/`updatedat` automatically.
 
-## Curate tool usage
+2. **Session metadata** — emit one `<bv-timestamp>` element with the \
+session date/time.
 
-Use the UPSERT operation. Put ALL extracted content into \
-`content.narrative.rules` as a single markdown string. Leave ALL other \
-content fields empty — do NOT populate rawConcept, snippets, relations, \
-narrative.structure, narrative.dependencies, narrative.diagrams, \
-narrative.examples, or narrative.features.
+3. **Key facts** — emit each factual statement, event, preference, \
+opinion, request, recommendation, and personal detail (from BOTH \
+user AND assistant) as a SEPARATE `<bv-fact>` sibling element with:
+   - `subject="<key_concept_in_snake_case>"`
+   - `category="<personal|project|preference|convention|team|environment>"`
+   - `value="<extracted_value>"`
+   The element's text content is the canonical statement preserving \
+the exact wording where possible. ONE fact per `<bv-fact>` element. \
+Do NOT merge multiple facts.
 
-Do NOT provide `domainContext`, `topicContext`, or `subtopicContext` — \
-these generate extra context.md files that are not part of the benchmark \
-corpus.
+Be exhaustive. Each statement gets its own `<bv-fact>`. Do NOT omit \
+details. Do NOT store the raw transcript. Do NOT write narrative \
+prose blocks — every fact is a typed `<bv-fact>` sibling.
+
+Do NOT use `<bv-rule>`, `<bv-task>`, or `<bv-decision>` elements for \
+conversational facts — those are reserved for actionable rules / \
+tasks / decisions.
+
+Do NOT mention or store JSON-schema field names like \
+`narrative.rules`, `rawConcept.flow`, or `content.facts` — those \
+belong to a deprecated curate-tool API. The output is HTML.
 
 ## Example
 
@@ -256,20 +261,17 @@ User: Good idea, I'll try that. The mechanic also said the brake pads are fine.
 Assistant: Great to hear about the brakes. Let me know if the reset fixes it.
 ```
 
-### Expected output (.brv/context-tree/gpt4_2655b836/session_2/key_facts.md):
+### Expected output (`.brv/context-tree/gpt4_2655b836/session_2.html`):
 
-```markdown
-## Narrative
-### Rules
-# Session 2 - Car First Service GPS Not Working Brake Pads Confirmed Fine
-**Date:** 2023/04/10 (Mon) 14:47
-
-## Key Facts
-- User just got car back from its first service
-- GPS system is not working after the service
-- Assistant suggested resetting the GPS system
-- User will try resetting the GPS
-- Mechanic confirmed brake pads are fine
+```
+<bv-topic path="gpt4_2655b836/session_2" title="Car First Service GPS Not Working Brake Pads Confirmed Fine Reset Suggested" summary="User reports GPS broken after first car service; assistant suggests reset. Mechanic confirmed brake pads fine." tags="car,service,gps,maintenance" keywords="gps,car_service,brake_pads,reset">
+<bv-timestamp>2023-04-10T14:47:00</bv-timestamp>
+<bv-fact subject="car_service_status" category="personal" value="first_service_completed">User just got car back from its first service.</bv-fact>
+<bv-fact subject="gps_status" category="personal" value="not_working">GPS system is not working after the service.</bv-fact>
+<bv-fact subject="assistant_recommendation" category="preference" value="reset_gps">Assistant suggested resetting the GPS system.</bv-fact>
+<bv-fact subject="user_planned_action" category="personal" value="will_try_reset">User will try resetting the GPS.</bv-fact>
+<bv-fact subject="brake_pads_status" category="personal" value="confirmed_fine">Mechanic confirmed brake pads are fine.</bv-fact>
+</bv-topic>
 ```
 
 ## Now index this content
@@ -284,8 +286,8 @@ source: {source}
 Extract ALL facts from BOTH user and assistant messages. \
 Do NOT summarize or skip any detail. \
 Do NOT add information that is not in the transcript. \
-Follow EXACTLY the file structure shown in the example above. \
-The key facts MUST NOT be too short or vague.\
+Emit exactly ONE `<bv-topic>` document at the mandated path. \
+The output starts with `<bv-topic` and ends with `</bv-topic>`.\
 """
 
 QUERY_TEMPLATE = "{question}"

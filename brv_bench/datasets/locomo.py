@@ -176,52 +176,74 @@ def _build_entries(
 # =============================================================================
 
 CURATE_TEMPLATE = """\
+MANDATORY: emit exactly one `<bv-topic>` HTML document with \
+path="{source}/{doc_id}". These values are fixed. Do NOT invent, \
+rename, or replace them. Do NOT create any other topic files \
+(no "indexing-guide" topic, no "guidelines" topic, no documentation \
+topic). One curate call = one topic file at the path above.
+
 You are indexing a long-term conversation dataset called LoCoMo into a \
-context tree. Follow these rules EXACTLY. DO NOT READ ANY FILES in this directory. The only files you are allowed to read are from the context tree ./brv/context-tree/
+context tree. Follow these rules EXACTLY. DO NOT READ ANY FILES in this \
+directory. The only files you are allowed to read are from the context \
+tree `./brv/context-tree/`.
 
 ## Context tree structure
 
-- Domain = conversation ID (e.g. `conv_26`)
-- Topic  = session number (e.g. `session-1`, `session-2`)
-- One file per session containing ONLY structured key facts (no transcript).
+- Domain = conversation ID (e.g. `conv_26`) — the source field above.
+- Topic  = session number (e.g. `session_1`, `session_2`) — the doc_id field above.
+- One file per session at `.brv/context-tree/<domain>/<topic>.html`.
 
 Example file tree:
 
 ```
 .brv/context-tree/
 ├── conv_26/
-│   ├── session_1/
-│   │   └── key_facts.md
-│   ├── session_2/
-│   │   └── key_facts.md
+│   ├── session_1.html
+│   ├── session_2.html
 │   └── ...
 ├── conv_30/
-│   ├── session_1/
-│   │   └── key_facts.md
+│   ├── session_1.html
 │   └── ...
 └── ...
 ```
 
-## What each context file MUST contain
+## Output contract
 
-1. **Metadata header** — doc_id, session source key, date/time, speakers.
-2. **Key facts** — Extract every factual statement, event, speaker names, plan, preference, \
-opinion, and personal detail mentioned. Be exhaustive. Each fact on its own \
-line. Do NOT omit any detail.
-3. **Curate limits** - ONE topic file for ONE session per curate task. DO NOT curate more than one topic file for each curate task.
-4. **Context tree consistency** — Before creating a new topic file, investigate the existing context tree structure. Follow EXACTLY the same naming conventions, directory layout, and file format already established by previous curate tasks.
+Emit a single `<bv-topic>` HTML document. The first character of your \
+output must be `<` (the opening of `<bv-topic>`); the last characters \
+must be `</bv-topic>`. Do NOT wrap in a code fence; do NOT add any \
+prose preamble or trailing commentary. The document MUST contain:
 
-Do NOT store the raw transcript. Store only extracted facts.
+1. **`<bv-topic>` attributes** — `path="{source}/{doc_id}"`, a \
+keyword-rich `title` for retrieval, a one-line `summary`, and \
+`tags`/`keywords` if available. The writer injects `createdat` and \
+`updatedat` automatically — do NOT set them manually.
 
-## Curate tool usage
+2. **Conversation metadata** — emit one `<bv-timestamp>` element with \
+the session date/time, and one `<bv-author>` element listing the \
+speakers (comma-separated).
 
-Use the UPSERT operation. Put ALL extracted content into `content.narrative.rules` \
-as a single markdown string. Leave ALL other content fields empty — do NOT populate \
-rawConcept, snippets, relations, narrative.structure, narrative.dependencies, \
-narrative.diagrams, narrative.examples, or narrative.features.
+3. **Key facts** — emit each factual statement, event, plan, \
+preference, opinion, and personal detail as a SEPARATE `<bv-fact>` \
+sibling element with attributes:
+   - `subject="<key_concept_in_snake_case>"` (e.g. `support_group_attendance`)
+   - `category="<personal|project|preference|convention|team|environment>"`
+   - `value="<extracted_value>"` (the structured value of the fact)
+   The element's text content is the canonical statement preserving \
+the exact wording where possible. ONE fact per `<bv-fact>` element. \
+Do NOT merge multiple facts.
 
-Do NOT provide `domainContext`, `topicContext`, or `subtopicContext` — these generate \
-extra context.md files that are not part of the benchmark corpus.
+Be exhaustive. Each statement gets its own `<bv-fact>`. Do NOT omit \
+details. Do NOT store the raw transcript. Do NOT write narrative \
+prose blocks — every fact is a typed `<bv-fact>` sibling.
+
+Do NOT use any `<bv-rule>`, `<bv-task>`, or `<bv-decision>` elements \
+for these conversational facts — those are reserved for actionable \
+rules / tasks / decisions, which conversational data does not contain.
+
+Do NOT mention or store JSON-schema field names like \
+`narrative.rules`, `rawConcept.flow`, or `content.facts` — those \
+belong to a deprecated curate-tool API. The output is HTML.
 
 ## Example
 
@@ -243,24 +265,19 @@ Melanie: Yeah, I painted that lake sunrise last year! It's special to me.
 Melanie: I'm off to go swimming with the kids.
 ```
 
-### Expected output (.brv/context-tree/conv_26/session_1/key_facts.md):
+### Expected output (`.brv/context-tree/conv_26/session_1.html`):
 
-```markdown
-# Session 1 — conv_26
-
-**Source:** conv_26
-**Date/Time:** 1:56 pm on 8 May, 2023
-**Speakers:** Caroline, Melanie
-
-## Key Facts
-
-- Caroline went to a LGBTQ support group the day before (7 May 2023)
-- Caroline found the transgender stories inspiring
-- The support group made Caroline feel accepted and gave her courage
-- Caroline plans to continue her education and explore career options
-- Caroline is interested in counseling or mental health work
-- Melanie painted a lake sunrise last year; it is special to her
-- Melanie is going swimming with her kids
+```
+<bv-topic path="conv_26/session_1" title="Caroline LGBTQ Support Group Counseling Career Melanie Lake Sunrise Painting" summary="Caroline shares experience at LGBTQ support group; plans counseling career. Melanie discusses lake sunrise painting and swimming with kids." tags="conversation,support,career,hobby" keywords="lgbtq,counseling,mental_health,painting,lake_sunrise,swimming">
+<bv-timestamp>2023-05-08T13:56:00</bv-timestamp>
+<bv-author>Caroline, Melanie</bv-author>
+<bv-fact subject="support_group_attendance" category="personal" value="2023-05-07">Caroline attended a LGBTQ support group on 7 May 2023.</bv-fact>
+<bv-fact subject="support_group_impact" category="personal" value="found_stories_inspiring">Caroline found the transgender stories inspiring.</bv-fact>
+<bv-fact subject="emotional_outcome" category="personal" value="accepted_and_courageous">The support group made Caroline feel accepted and gave her courage.</bv-fact>
+<bv-fact subject="career_intent" category="personal" value="counseling_mental_health">Caroline plans to continue her education and explore career options in counseling or mental health.</bv-fact>
+<bv-fact subject="painting_subject" category="personal" value="lake_sunrise">Melanie painted a lake sunrise last year that is special to her.</bv-fact>
+<bv-fact subject="family_activity" category="personal" value="swimming_with_kids">Melanie is going swimming with her kids.</bv-fact>
+</bv-topic>
 ```
 
 ## Now index this content
@@ -274,8 +291,8 @@ source: {source}
 
 Extract ALL facts. Do NOT summarize or skip any detail. \
 Do NOT add information that is not in the transcript. \
-Follow EXACTLY the file structure as the example above. \
-The key concepts MUST NOT be too short or vague.
+Emit exactly ONE `<bv-topic>` document at the mandated path. \
+The output starts with `<bv-topic` and ends with `</bv-topic>`.
 """
 
 QUERY_TEMPLATE = "{question}"

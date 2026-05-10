@@ -31,10 +31,18 @@ from brv_bench.types import (
 
 logger = logging.getLogger(__name__)
 
-# Regex for a context-tree file path:
-# .brv/context-tree/{domain}/{topic}/{file}.md  → doc_id = {topic}
+# Regex for a context-tree file path. Supports both layouts the brv writer has
+# emitted across the HTML migration:
+#   .brv/context-tree/{domain}/{topic}.html         → doc_id = {topic}  (post-T3, current default)
+#   .brv/context-tree/{domain}/{topic}.htm          → doc_id = {topic}  (defensive: legacy html ext)
+#   .brv/context-tree/{domain}/{topic}/{file}.md    → doc_id = {topic}  (legacy markdown layout, may
+#                                                                       still exist on partially-migrated
+#                                                                       trees)
+# The bench prefers the structured `data.matchedDocs[]` event for doc-id
+# extraction; this regex is the defensive fallback when the JSON event
+# omits matchedDocs (cache hits, tier 0/1).
 _PATH_RE = re.compile(
-    r"\.brv/context-tree/([^/]+)/([^/]+)/[^/]+\.md",
+    r"\.brv/context-tree/([^/]+)/([^/]+?)(?:\.html?|/[^/]+\.md)",
 )
 
 # Regex to extract the source identifier from a query string.
@@ -204,27 +212,52 @@ class BrvCliAdapter(RetrievalAdapter):
     ) -> tuple[str, list[str]]:
         """Parse brv query JSON into (context_text, doc_ids).
 
-        The new ``brv query`` output is structured markdown with
-        ``**Details**:``, ``**Sources**:``, etc.  doc_ids are extracted
-        deterministically from file paths in the Sources section.
+        ``brv query --format json`` emits one JSON object per line — one for
+        each lifecycle event (``thinking``, ``toolCall``, ``toolResult``,
+        ``response``, ``completed``). Tier 2 (direct-response, no LLM)
+        emits a single ``completed`` line; Tier 3 / Tier 4 emit several
+        events with ``completed`` last. We walk the stream, collect every
+        valid event, and use the LAST ``event == "completed"`` payload as
+        the source of truth (matches brv's "final state wins" semantics
+        when retries / restarts surface multiple completions).
+
+        Doc-id source preference (post-HTML-migration):
+            1. ``data.matchedDocs[].path`` — structured event payload, present
+               on every Tier 2 / Tier 3 / Tier 4 completion. Format-agnostic
+               (``.md`` and ``.html`` both classify cleanly via path parsing)
+               and tier-agnostic.
+            2. ``data.result`` regex on the ``**Sources**:`` block — defensive
+               fallback for cache-hit responses (Tier 0/1) that may omit
+               matchedDocs, or for unusual response shapes.
+
+        Context-text source: always the ``**Details**:`` block from
+        ``data.result``. The optional contamination filter
+        (``valid_topics``) reuses the resolved doc_ids so isolated-mode tests
+        get a domain-scoped justifier context regardless of which Tier
+        produced the response.
 
         Args:
-            raw_json: Raw JSON string from ``brv query``.
+            raw_json: Raw JSON-or-NDJSON string from ``brv query``.
             query: Original query string used to extract the source
                 identifier for domain-scoped filtering.
 
         Returns:
             (context_text, doc_ids) — context is the Details section,
-            doc_ids are topic folder names parsed from file paths.
+            doc_ids are topic names extracted from matchedDocs paths.
         """
-        try:
-            data = json.loads(raw_json)
-            result_text = data["data"]["result"]
-        except (json.JSONDecodeError, KeyError, TypeError):
+        completed_payload = _find_completed_event(raw_json)
+        if completed_payload is None:
             return raw_json, []
 
+        result_text = completed_payload.get("result", "") or ""
         source = _extract_source_from_query(query)
-        doc_ids = _extract_doc_ids(result_text, source=source)
+
+        matched_docs = completed_payload.get("matchedDocs")
+        if isinstance(matched_docs, list) and matched_docs:
+            doc_ids = _doc_ids_from_matched_docs(matched_docs, source=source)
+        else:
+            doc_ids = _extract_doc_ids(result_text, source=source)
+
         valid_topics = set(doc_ids) if source else None
         context_text = _extract_details(result_text, valid_topics=valid_topics)
 
@@ -291,11 +324,109 @@ def _extract_details(
     return "\n\n---\n\n".join(filtered)
 
 
+def _find_completed_event(raw_stdout: str) -> dict | None:
+    """Walk a brv query NDJSON stream and return the LAST `completed` event's
+    `data` payload, or `None` if no completed event is present.
+
+    `brv query --format json` emits one JSON object per line. For Tier 2 the
+    stream is a single completed line; for Tier 3 / Tier 4 it interleaves
+    `thinking`, `toolCall`, `toolResult`, `response` events with the final
+    `completed`. A whole-stream `json.loads(raw_stdout)` raises on multi-line
+    input, which is how the bench previously dropped every Tier 3 / 4 query's
+    matchedDocs.
+
+    Defensive: malformed lines (truncated chunks from a flushed pipe, stray
+    blank lines) are skipped rather than aborting the parse. If multiple
+    completed events appear (rare — only on retry / restart paths), the last
+    one wins because it represents the final state.
+    """
+    completed: dict | None = None
+    for line in raw_stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        payload = event.get("data")
+        if not isinstance(payload, dict):
+            continue
+        if payload.get("event") == "completed":
+            completed = payload
+
+    return completed
+
+
+def _doc_ids_from_matched_docs(
+    matched_docs: list[dict],
+    *,
+    source: str | None = None,
+) -> list[str]:
+    """Extract doc_ids from the structured ``data.matchedDocs[]`` array.
+
+    Each entry's ``path`` is relative to the context-tree root, e.g.
+    ``conv_26/session_1.html`` (post-T3, the writer's flat one-file-per-topic
+    layout) or ``conv_26/session_1/key_facts.md`` (legacy 3-segment layout).
+    The first path segment is the domain; the topic name is the basename
+    (without extension) for HTML, or the second segment for legacy markdown.
+
+    Shared-source paths (``[alias]:rel/path.html``) are accepted but the
+    alias prefix is stripped before parsing so they classify identically
+    to local paths.
+
+    When *source* is provided, only paths whose domain matches are included.
+    Order is preserved (the brv search ranks paths by score; the bench's
+    retrieval-quality metrics expect that order to flow through).
+    """
+    seen: set[str] = set()
+    doc_ids: list[str] = []
+    for entry in matched_docs:
+        if not isinstance(entry, dict):
+            continue
+        raw_path = entry.get("path")
+        if not isinstance(raw_path, str) or not raw_path:
+            continue
+
+        # Strip shared-source `[alias]:` prefix when present.
+        if raw_path.startswith("["):
+            colon = raw_path.find(":")
+            if colon != -1:
+                raw_path = raw_path[colon + 1 :]
+
+        parts = raw_path.split("/")
+        if len(parts) < 2:
+            continue
+        domain = parts[0]
+        if source and domain != source:
+            continue
+
+        # New 2-segment layout: domain/topic.<ext>  → topic = basename minus ext.
+        # Legacy 3-segment layout: domain/topic/file.md → topic = parts[1].
+        if len(parts) == 2:
+            topic_with_ext = parts[1]
+            dot = topic_with_ext.rfind(".")
+            topic = topic_with_ext[:dot] if dot != -1 else topic_with_ext
+        else:
+            topic = parts[1]
+
+        if topic and topic not in seen:
+            seen.add(topic)
+            doc_ids.append(topic)
+
+    return doc_ids
+
+
 def _extract_doc_ids(text: str, *, source: str | None = None) -> list[str]:
     """Extract doc_ids from **Sources** file paths.
 
-    Path format: .brv/context-tree/{domain}/{topic}/{file}.md
-    doc_id = {topic} (the topic folder name).
+    Defensive regex fallback for responses without ``data.matchedDocs[]``
+    (cache-hit Tier 0/1, or unusual shapes). The regex accepts both the
+    post-T3 2-segment HTML layout and the legacy 3-segment markdown layout;
+    doc_id is always the topic name (basename minus extension for HTML;
+    second path segment for legacy markdown).
 
     When *source* is provided, only paths whose domain folder matches
     the source are included.
