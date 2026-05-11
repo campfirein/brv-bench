@@ -57,20 +57,48 @@ def _extract_source_from_query(query: str) -> str | None:
 
 
 class BrvCliAdapter(RetrievalAdapter):
-    """Adapter that shells out to the brv CLI in headless mode."""
+    """Adapter that shells out to the brv CLI in headless mode.
 
-    #: Live context tree written by brv.
-    _CONTEXT_TREE = Path(".brv/context-tree")
+    For two-config orchestration (T6 `brv-bench run`), each adapter instance
+    can be pinned to a specific byterover-cli checkout via `working_dir`
+    (the subprocess's cwd) and `brv_bin` (the exact binary path, e.g.
+    `<checkout>/bin/run.js`). This lets two different brv versions run
+    side-by-side without `npm link` conflicts on the global PATH.
+
+    Defaults are unchanged: when neither is set, `brv` is taken from PATH
+    and subprocess inherits the bench's cwd — matches the single-config
+    flow `brv-bench curate` / `brv-bench evaluate` have always used.
+    """
 
     def __init__(
         self,
         prompt_config: PromptConfig,
         justifier: AnswerJustifier | None = None,
         context_tree_source: Path | None = None,
+        working_dir: Path | None = None,
+        brv_bin: str = "brv",
     ) -> None:
         self._prompt_config = prompt_config
         self._justifier = justifier
         self._context_tree_source = context_tree_source
+        self._working_dir = Path(working_dir) if working_dir is not None else None
+        self._brv_bin = brv_bin
+
+    @property
+    def working_dir(self) -> Path | None:
+        """The subprocess cwd this adapter runs `brv` under, or None for inherit."""
+        return self._working_dir
+
+    @property
+    def brv_bin(self) -> str:
+        return self._brv_bin
+
+    @property
+    def context_tree_path(self) -> Path:
+        """Absolute path to this adapter's `.brv/context-tree/`. Used by
+        isolated-mode copy/remove and by the orchestrator's pre-run cleanup."""
+        base = self._working_dir if self._working_dir is not None else Path(".")
+        return base / ".brv" / "context-tree"
 
     @property
     def name(self) -> str:
@@ -145,9 +173,9 @@ class BrvCliAdapter(RetrievalAdapter):
     async def reset(self) -> None:
         """In isolated mode, ensure the live context tree is empty."""
         if self._context_tree_source is not None:
-            if self._CONTEXT_TREE.exists():
-                shutil.rmtree(self._CONTEXT_TREE)
-                self._CONTEXT_TREE.mkdir(parents=True, exist_ok=True)
+            if self.context_tree_path.exists():
+                shutil.rmtree(self.context_tree_path)
+                self.context_tree_path.mkdir(parents=True, exist_ok=True)
                 logger.debug("Isolated mode: cleared live context tree")
 
     async def teardown(self) -> None:
@@ -160,7 +188,7 @@ class BrvCliAdapter(RetrievalAdapter):
     def _copy_domain(self, domain: str) -> None:
         """Copy domain folder from source tree into the live context tree."""
         src = self._context_tree_source / domain  # type: ignore[operator]
-        dst = self._CONTEXT_TREE / domain
+        dst = self.context_tree_path / domain
         if not src.exists():
             logger.warning(
                 "Isolated mode: source domain folder not found: %s", src
@@ -173,7 +201,7 @@ class BrvCliAdapter(RetrievalAdapter):
 
     def _remove_domain(self, domain: str) -> None:
         """Delete the domain folder from the live context tree."""
-        dst = self._CONTEXT_TREE / domain
+        dst = self.context_tree_path / domain
         if dst.exists():
             shutil.rmtree(dst)
             logger.debug("Isolated mode: removed %s", dst)
@@ -192,12 +220,20 @@ class BrvCliAdapter(RetrievalAdapter):
             )
 
     async def _run_brv(self, *args: str) -> tuple[int, str]:
-        """Run a brv CLI command and return (returncode, stdout)."""
+        """Run a brv CLI command and return (returncode, stdout).
+
+        Subprocess runs in `self._working_dir` if set (so brv reads the
+        per-config `.brv/` project), otherwise inherits the bench's cwd.
+        Invokes `self._brv_bin` (default `"brv"` from PATH) so two
+        different brv checkouts can be exercised side-by-side via their
+        per-checkout `bin/run.js` entrypoints.
+        """
         proc = await asyncio.create_subprocess_exec(
-            "brv",
+            self._brv_bin,
             *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            cwd=str(self._working_dir) if self._working_dir is not None else None,
         )
         stdout, stderr = await proc.communicate()
         output = stdout.decode().strip()

@@ -138,6 +138,102 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
 
+    # --- run (two-config A/B orchestration) ---
+    run_parser = subparsers.add_parser(
+        "run",
+        help=(
+            "Two-config A/B benchmark: runs curate + evaluate against two "
+            "byterover-cli checkouts, reads per-config telemetry, and produces "
+            "a side-by-side comparison report."
+        ),
+    )
+    run_parser.add_argument(
+        "--brv-a",
+        type=Path,
+        required=True,
+        metavar="PATH",
+        help=(
+            "Path to byterover-cli checkout for Config A (e.g. main + T5 "
+            "backport). Must have `npm install` and `npm run build` already "
+            "completed; bench does NOT build the checkout."
+        ),
+    )
+    run_parser.add_argument(
+        "--brv-b",
+        type=Path,
+        required=True,
+        metavar="PATH",
+        help="Path to byterover-cli checkout for Config B (e.g. HTML branch).",
+    )
+    run_parser.add_argument(
+        "--ground-truth",
+        type=Path,
+        required=True,
+        help="Path to benchmark dataset JSON file.",
+    )
+    run_parser.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="Path to write the side-by-side comparison markdown report.",
+    )
+    run_parser.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="Max retrieved docs per query (default: 10).",
+    )
+    run_parser.add_argument(
+        "--label-a",
+        type=str,
+        default="Config A",
+        help="Label for Config A in the report (default: 'Config A').",
+    )
+    run_parser.add_argument(
+        "--label-b",
+        type=str,
+        default="Config B",
+        help="Label for Config B in the report (default: 'Config B').",
+    )
+    # Judge / justifier options — reused across both configs (LLM judging is
+    # config-independent so we pay the setup once).
+    run_parser.add_argument(
+        "--judge",
+        action="store_true",
+        default=False,
+        help="Enable LLM-as-Judge answer correctness metric on both configs.",
+    )
+    run_parser.add_argument(
+        "--judge-backend",
+        choices=["anthropic", "gemini", "openai"],
+        default="gemini",
+    )
+    run_parser.add_argument(
+        "--judge-model",
+        type=str,
+        default=None,
+    )
+    run_parser.add_argument(
+        "--judge-concurrency",
+        type=int,
+        default=5,
+    )
+    run_parser.add_argument(
+        "--judge-cache",
+        type=Path,
+        default=None,
+    )
+    run_parser.add_argument(
+        "--justifier-backend",
+        choices=["anthropic", "gemini", "openai"],
+        default="gemini",
+    )
+    run_parser.add_argument(
+        "--justifier-model",
+        type=str,
+        default=None,
+    )
+
     return parser.parse_args(argv)
 
 
@@ -262,6 +358,60 @@ async def main(argv: list[str] | None = None) -> int:
         print(f"\nResults saved to {output_path}")
         print(f"Summary saved to {output_path.with_suffix('.txt')}")
 
+        return 0
+
+    elif args.command == "run":
+        from brv_bench.commands.run import RunConfig, run_two_config_bench
+        dataset = load_dataset(args.ground_truth)
+        prompt_config = get_prompt_config(dataset.name)
+        metrics = default_metrics()
+
+        if args.judge:
+            from brv_bench.metrics._judge.client import create_judge_client
+            from brv_bench.metrics.llm_judge import LLMJudge
+
+            judge_client = create_judge_client(
+                backend=args.judge_backend,
+                model=args.judge_model,
+            )
+            metrics.append(
+                LLMJudge(
+                    client=judge_client,
+                    prompt_template=prompt_config.judge_template,
+                    concurrency=args.judge_concurrency,
+                    cache_path=args.judge_cache,
+                )
+            )
+
+        justifier = None
+        if prompt_config.justifier_template:
+            from brv_bench.adapters.justifier import AnswerJustifier
+            from brv_bench.metrics._judge.client import create_judge_client
+
+            justifier_client = create_judge_client(
+                backend=args.justifier_backend,
+                model=args.justifier_model,
+            )
+            justifier = AnswerJustifier(
+                client=justifier_client,
+                prompt_template=prompt_config.justifier_template,
+            )
+
+        config = RunConfig(
+            dataset=dataset,
+            prompt_config=prompt_config,
+            brv_a_dir=args.brv_a,
+            brv_b_dir=args.brv_b,
+            output_path=args.output,
+            limit=args.limit,
+            metrics=tuple(metrics),
+            justifier=justifier,
+            label_a=args.label_a,
+            label_b=args.label_b,
+        )
+        result = await run_two_config_bench(config)
+        print(f"\nReport written to {args.output}")
+        print(f"Decision: {result.comparison.decision}")
         return 0
 
 

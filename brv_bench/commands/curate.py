@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 
 from tqdm import tqdm
 
@@ -33,11 +34,18 @@ class CurateSummary:
 async def curate_doc(
     doc: CorpusDocument,
     prompt_config: PromptConfig,
+    brv_bin: str = "brv",
+    cwd: Path | None = None,
 ) -> CurateResult:
     """Curate a single corpus document via brv CLI.
 
     Formats the document using the prompt template, then runs:
-        brv curate <formatted_content> --headless --format json
+        <brv_bin> curate <formatted_content> --detach --format json
+
+    For two-config A/B orchestration each config's checkout provides its
+    own `bin/run.js`; `brv_bin` and `cwd` let the caller pin this curate
+    invocation to one specific checkout. Defaults preserve the
+    single-config flow (`brv` on PATH, bench's cwd).
     """
     formatted = prompt_config.curate_template.format(
         doc_id=doc.doc_id,
@@ -46,7 +54,7 @@ async def curate_doc(
     )
 
     proc = await asyncio.create_subprocess_exec(
-        "brv",
+        brv_bin,
         "curate",
         formatted,
         "--detach",
@@ -54,6 +62,7 @@ async def curate_doc(
         "json",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        cwd=str(cwd) if cwd is not None else None,
     )
     stdout, stderr = await proc.communicate()
 
@@ -75,6 +84,8 @@ async def curate_doc(
 async def curate(
     corpus: tuple[CorpusDocument, ...],
     prompt_config: PromptConfig,
+    brv_bin: str = "brv",
+    cwd: Path | None = None,
 ) -> CurateSummary:
     """Run the full curation pipeline.
 
@@ -84,6 +95,13 @@ async def curate(
     Args:
         corpus: Corpus documents from the benchmark dataset.
         prompt_config: Dataset-specific prompt templates.
+        brv_bin: Path to the brv binary (default `"brv"` from PATH). For
+            two-config orchestration, set to `<checkout>/bin/run.js` so
+            each config's curates fork their own daemon from their own
+            checkout's `dist/`.
+        cwd: Working directory for the brv subprocess (default: inherit
+            from bench). The brv CLI's `.brv/` project resolution keys
+            off cwd, so this is what isolates each config's context tree.
 
     Returns:
         CurateSummary with per-document results.
@@ -93,7 +111,7 @@ async def curate(
 
     results: list[CurateResult] = []
     for doc in tqdm(corpus, desc="Curating", unit="doc"):
-        result = await curate_doc(doc, prompt_config)
+        result = await curate_doc(doc, prompt_config, brv_bin=brv_bin, cwd=cwd)
         results.append(result)
 
     succeeded = sum(1 for r in results if r.success)
